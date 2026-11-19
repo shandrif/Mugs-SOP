@@ -169,32 +169,55 @@
     var T = state.result.totals;
     var highStores = state.result.stores.filter(function (s) { return s.status === 'High'; }).length;
     var k = [
-      { id: 'hi', label: 'High-risk branches', value: highStores, note: 'of ' + plural(T.stores, 'branch', 'branches') + ' need follow-up', cls: 'feature' },
-      { id: 'dv', label: 'Direct violations', value: T.directLines, note: n0(T.directExcess) + ' mugs over limit · ' + plural(T.directStores, 'branch', 'branches'), cls: 'high' },
-      { id: 'sr', label: 'Split-invoice runs', value: T.runs, note: T.runsHigh + ' high · ' + T.runsMedium + ' medium · ' + plural(T.runStores, 'branch', 'branches'), cls: 'med' },
+      { id: 'hi', label: 'High-risk branches', value: highStores, note: 'of ' + plural(T.stores, 'branch', 'branches') + ' need follow-up', cls: 'feature', go: 'stores:High' },
+      { id: 'dv', label: 'Direct violations', value: T.directLines, note: n0(T.directExcess) + ' mugs over limit · ' + plural(T.directStores, 'branch', 'branches'), cls: 'high', go: 'direct:' },
+      { id: 'sr', label: 'Split-invoice runs', value: T.runs, note: T.runsHigh + ' high · ' + T.runsMedium + ' medium · ' + plural(T.runStores, 'branch', 'branches'), cls: 'med', go: 'runs:' },
       { id: 'mu', label: 'Mugs sold', value: T.mugs, note: plural(T.invoices, 'invoice', 'invoices') },
-      { id: 'sa', label: 'Net sales', value: T.sales, money: true, note: 'SAR · ' + plural(T.lines, 'sale line', 'sale lines') },
-      { id: 'zq', label: 'Zero-qty lines', value: T.zero, note: 'voids or returns to review' }
+      { id: 'sa', label: 'Net sales', value: T.sales, unit: 'SAR', note: plural(T.lines, 'sale line', 'sale lines') + ' · SAR ' + sar(T.sales) },
+      { id: 'zq', label: 'Zero-qty lines', value: T.zero, note: 'voids or returns to review', go: 'zero:' }
     ];
     var wrap = $('kpis');
     if (!wrap.children.length) {
       wrap.innerHTML = k.map(function (x) {
-        return '<div class="kpi ' + (x.cls || '') + '" data-k="' + x.id + '"><div class="label">' +
-          (x.cls === 'high' || x.cls === 'med' ? '<i class="dot" aria-hidden="true"></i>' : '') + esc(x.label) +
-          '</div><div class="value">0</div><div class="note"></div></div>';
+        return '<div class="kpi ' + (x.cls || '') + '" data-k="' + x.id + '"' +
+          (x.go ? ' data-go="' + x.go + '" role="button" tabindex="0" aria-label="Open ' + esc(x.label) + '"' : '') + '>' +
+          (x.go ? '<svg class="go" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>' : '') +
+          '<div class="label">' + (x.cls === 'high' || x.cls === 'med' ? '<i class="dot" aria-hidden="true"></i>' : '') + esc(x.label) +
+          '</div><div class="value"><span class="num">0</span>' + (x.unit ? '<span class="unit">' + x.unit + '</span>' : '') +
+          '</div><div class="note"></div></div>';
       }).join('');
     }
     k.forEach(function (x) {
       var el = wrap.querySelector('[data-k="' + x.id + '"]');
       el.querySelector('.note').textContent = x.note;
       var from = isNewFile ? 0 : (state.kpiValues[x.id] || 0);
-      tween(el.querySelector('.value'), from, x.value, x.money, isNewFile ? 900 : 400);
+      tween(el.querySelector('.num'), from, x.value, isNewFile ? 900 : 400);
       state.kpiValues[x.id] = x.value;
     });
+    replay(wrap, isNewFile ? 'enter' : 'recalc');
   }
-  function tween(node, from, to, money, dur) {
-    var fmt = function (v) { return money ? nf0.format(v) : n0(Math.round(v)); };
-    if (reduceMotion || from === to) { node.textContent = money ? sar(to) : fmt(to); return; }
+  // restart a one-shot CSS animation class
+  function replay(el, cls) {
+    el.classList.remove('enter', 'recalc');
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+  function kpiGo(el) {
+    var parts = el.getAttribute('data-go').split(':');
+    state.filter.store = ''; $('fStore').value = '';
+    state.filter.level = parts[1] || ''; $('fLevel').value = state.filter.level;
+    switchTab(parts[0]);
+    var panel = document.querySelector('.table-panel');
+    window.scrollTo({ top: panel.getBoundingClientRect().top + window.scrollY - 84, behavior: reduceMotion ? 'auto' : 'smooth' });
+  }
+  $('kpis').addEventListener('click', function (e) { var c = e.target.closest('.kpi[data-go]'); if (c) kpiGo(c); });
+  $('kpis').addEventListener('keydown', function (e) {
+    var c = e.target.closest('.kpi[data-go]');
+    if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); kpiGo(c); }
+  });
+  function tween(node, from, to, dur) {
+    var fmt = function (v) { return n0(Math.round(v)); };
+    if (reduceMotion || from === to) { node.textContent = fmt(to); return; }
     var start = null;
     node._tw = (node._tw || 0) + 1;
     var token = node._tw;
@@ -204,7 +227,7 @@
       var p = Math.min(1, (ts - start) / dur);
       var e = 1 - Math.pow(1 - p, 4); // ease-out quart
       node.textContent = fmt(from + (to - from) * e);
-      if (p < 1) requestAnimationFrame(step); else node.textContent = money ? sar(to) : fmt(to);
+      if (p < 1) requestAnimationFrame(step); else node.textContent = fmt(to);
     }
     requestAnimationFrame(step);
   }
@@ -250,6 +273,8 @@
       chartObserver.observe(el);
     } else if (animate) {
       el.classList.remove('armed');
+    } else {
+      el.classList.remove('recalc'); void el.offsetWidth; el.classList.add('recalc');
     }
   }
   function badgeText(level) { return level === 'Clean' ? 'Clean' : level + ' risk'; }
