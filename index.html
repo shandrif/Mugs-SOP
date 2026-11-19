@@ -17,6 +17,7 @@
   </script>
 </head>
 <body>
+  <div class="ambient" aria-hidden="true"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i></div>
   <header class="nav" id="nav">
     <div class="wrap nav-inner">
       <a class="brand" href="#top" aria-label="Mugs SOP Monitor, home">
@@ -41,7 +42,7 @@
   </header>
 
   <section class="hero" id="top">
-    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-bg" aria-hidden="true"><i class="aurora"></i></div>
     <div class="wrap hero-inner">
       <div class="hero-copy">
         <div class="hero-intro">
@@ -58,7 +59,8 @@
 
       <div id="drop" class="drop e4" tabindex="0" role="button" aria-label="Upload the Sales By Product export">
         <input id="file" type="file" accept=".xlsx,.xls,.csv" hidden>
-        <svg class="mugs" viewBox="0 0 220 96" aria-hidden="true">
+        <svg class="mugs" viewBox="0 -34 220 130" aria-hidden="true">
+          <g class="steam"><path class="s1" d="M30 22c-6-8 6-12 0-20s4-12 0-18"/><path class="s2" d="M104 10c-6-8 6-12 0-20s4-12 0-18"/><path class="s3" d="M174 22c-6-8 6-12 0-20s4-12 0-18"/></g>
           <g class="mug m1"><path d="M14 30h40v34a14 14 0 0 1-14 14H28a14 14 0 0 1-14-14z"/><path class="h" d="M54 38h6a9 9 0 0 1 0 18h-6"/></g>
           <g class="mug m2"><path d="M82 18h46v42a16 16 0 0 1-16 16H98a16 16 0 0 1-16-16z"/><path class="h" d="M128 28h7a11 11 0 0 1 0 22h-7"/></g>
           <g class="mug m3"><path d="M158 30h40v34a14 14 0 0 1-14 14h-12a14 14 0 0 1-14-14z"/><path class="h" d="M198 38h6a9 9 0 0 1 0 18h-6"/></g>
@@ -80,9 +82,24 @@
 
     <div id="results" hidden>
 
-      <section class="kpis reveal" id="kpis" aria-label="Summary"></section>
+      <section class="kpis" id="kpis" aria-label="Summary"></section>
 
-      <section class="panel settings reveal" aria-label="Detection settings">
+
+      <div class="dash-grid">
+      <section class="panel chart-panel reveal" aria-labelledby="chartTitle">
+        <div class="panel-head">
+          <div>
+            <h2 class="section-title" id="chartTitle">Where the excess mugs are</h2>
+            <p class="muted small">Mugs sold over the limit, top 10 branches. Click a bar to open that branch.</p>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><i class="sw sw-direct"></i>Direct violations</span>
+            <span><i class="sw sw-split"></i>Split-invoice runs</span>
+          </div>
+        </div>
+        <div id="chart" class="chart"></div>
+      </section>
+      <aside class="panel settings reveal" style="--d:80ms" aria-label="Detection settings">
         <div class="settings-head">
           <h2 class="section-title">Detection rules</h2>
           <p class="muted small">Adjust and the report recalculates instantly.</p>
@@ -104,21 +121,9 @@
             </select>
           </label>
         </div>
-      </section>
-
-      <section class="panel chart-panel reveal" aria-labelledby="chartTitle">
-        <div class="panel-head">
-          <div>
-            <h2 class="section-title" id="chartTitle">Where the excess mugs are</h2>
-            <p class="muted small">Mugs sold over the limit, top 10 branches. Click a bar to open that branch.</p>
-          </div>
-          <div class="legend" aria-hidden="true">
-            <span><i class="sw sw-direct"></i>Direct violations</span>
-            <span><i class="sw sw-split"></i>Split-invoice runs</span>
-          </div>
-        </div>
-        <div id="chart" class="chart"></div>
-      </section>
+        <p class="rules-note">Rules are saved in this browser and apply to every file you load.</p>
+      </aside>
+      </div>
 
       <section class="panel table-panel reveal" aria-label="Details">
         <nav class="tabs" role="tablist" id="tabs">
