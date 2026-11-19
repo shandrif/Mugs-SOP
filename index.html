@@ -2,124 +2,221 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Mugs SOP Monitor</title>
-  <meta name="description" content="Flags branches that sell more than the allowed mugs per customer, directly or by splitting invoices.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M6 8h16v12a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z' fill='%23b4532a'/><path d='M22 11h2a4 4 0 0 1 0 8h-2' fill='none' stroke='%23b4532a' stroke-width='2.5'/></svg>">
+  <meta name="description" content="Half Million internal tool that flags branches selling more than two mugs of one colour per customer, directly or by splitting invoices.">
+  <meta name="theme-color" content="#0b3d2c">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='32' fill='%230b3d2c'/><text x='32' y='41' font-family='Georgia,serif' font-size='26' font-weight='700' text-anchor='middle' fill='%23e9dcc0'>HM</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    document.documentElement.classList.add('js');
+    try { var t = localStorage.getItem('mugsSopTheme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
 </head>
 <body>
-  <header class="top">
-    <div class="wrap top-inner">
-      <div class="brand">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 8h16v12a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z"/><path class="handle" d="M22 11h2a4 4 0 0 1 0 8h-2"/></svg>
-        <div>
-          <h1>Mugs SOP Monitor</h1>
-          <p class="sub">Limit of <b id="hdrLimit">2</b> mugs of one colour per customer, checked per branch</p>
-        </div>
-      </div>
-      <div class="top-actions">
-        <button id="btnHelp" class="ghost" type="button">How it works</button>
-        <button id="btnExport" class="primary" type="button" disabled>Export to Excel</button>
+  <header class="nav" id="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="Mugs SOP Monitor, home">
+        <span class="monogram" aria-hidden="true">HM</span>
+        <span class="brand-text">
+          <span class="brand-name">Mugs SOP Monitor</span>
+          <span class="brand-sub">Half Million · Retail compliance</span>
+        </span>
+      </a>
+      <div class="nav-actions">
+        <button id="btnTheme" class="icon-btn" type="button" aria-label="Toggle dark mode">
+          <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+          <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+        <button id="btnHelp" class="btn btn-ghost" type="button">How it works</button>
+        <button id="btnExport" class="btn btn-primary" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>
+          <span>Export</span>
+        </button>
       </div>
     </div>
   </header>
 
-  <main class="wrap">
-    <section id="drop" class="drop" tabindex="0">
-      <input id="file" type="file" accept=".xlsx,.xls,.csv" hidden>
-      <div class="drop-body">
-        <strong>Drop the daily “Sales By Product” export here</strong>
-        <span>or <button type="button" class="link" id="btnPick">choose a file</button> (.xlsx, .xls, .csv)</span>
-        <small>The file is processed in your browser only. Nothing is uploaded to any server.</small>
+  <section class="hero" id="top">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="wrap hero-inner">
+      <div class="hero-copy">
+        <div class="hero-intro">
+          <p class="eyebrow e1">Retail SOP · Mugs</p>
+          <h1 class="e2">Two of a colour.<br><em>Per customer.</em> Every branch.</h1>
+          <p class="lead e3">Drop the daily POS export and see which branches sell over the limit, either on one invoice or by splitting it across many.</p>
+        </div>
+        <div class="hero-report" hidden>
+          <p class="eyebrow">Daily compliance report</p>
+          <h1 id="reportTitle">—</h1>
+          <p class="lead" id="fileInfo"></p>
+        </div>
       </div>
-      <div id="fileInfo" class="file-info" hidden></div>
-    </section>
 
-    <div id="error" class="error" hidden></div>
+      <div id="drop" class="drop e4" tabindex="0" role="button" aria-label="Upload the Sales By Product export">
+        <input id="file" type="file" accept=".xlsx,.xls,.csv" hidden>
+        <svg class="mugs" viewBox="0 0 220 96" aria-hidden="true">
+          <g class="mug m1"><path d="M14 30h40v34a14 14 0 0 1-14 14H28a14 14 0 0 1-14-14z"/><path class="h" d="M54 38h6a9 9 0 0 1 0 18h-6"/></g>
+          <g class="mug m2"><path d="M82 18h46v42a16 16 0 0 1-16 16H98a16 16 0 0 1-16-16z"/><path class="h" d="M128 28h7a11 11 0 0 1 0 22h-7"/></g>
+          <g class="mug m3"><path d="M158 30h40v34a14 14 0 0 1-14 14h-12a14 14 0 0 1-14-14z"/><path class="h" d="M198 38h6a9 9 0 0 1 0 18h-6"/></g>
+        </svg>
+        <div class="drop-body">
+          <strong class="drop-title">Drop the “Sales By Product” export</strong>
+          <span class="drop-sub">or <button type="button" class="link" id="btnPick">browse files</button> · .xlsx, .xls, .csv</span>
+          <span class="drop-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Read in your browser only. Nothing is uploaded.</span>
+        </div>
+        <button type="button" class="btn btn-on-dark drop-again" id="btnAgain">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0-4 4m4-4 4 4M5 19h14"/></svg>Load another day
+        </button>
+      </div>
+    </div>
+  </section>
 
-    <section class="settings" aria-label="Detection settings">
-      <label>Limit per customer
-        <input id="optLimit" type="number" min="1" max="20" value="2">
-      </label>
-      <label>Max gap between invoices (min)
-        <input id="optGap" type="number" min="0.5" max="60" step="0.5" value="3">
-      </label>
-      <label>Min invoices in a run
-        <input id="optMinInv" type="number" min="2" max="20" value="2">
-      </label>
-      <label>“Same colour” means
-        <select id="optGroup">
-          <option value="sku">Same item / SKU</option>
-          <option value="colour">Same colour across items</option>
-        </select>
-      </label>
-    </section>
+  <main class="wrap main">
+    <div id="error" class="error" role="alert" hidden></div>
 
     <div id="results" hidden>
-      <section class="kpis" id="kpis"></section>
 
-      <nav class="tabs" role="tablist">
-        <button role="tab" data-tab="stores" class="active">Branches</button>
-        <button role="tab" data-tab="runs">Split-invoice runs <span class="pill" id="cntRuns"></span></button>
-        <button role="tab" data-tab="direct">Direct violations <span class="pill" id="cntDirect"></span></button>
-        <button role="tab" data-tab="zero">Zero-qty lines <span class="pill" id="cntZero"></span></button>
-      </nav>
+      <section class="kpis reveal" id="kpis" aria-label="Summary"></section>
 
-      <section class="filters">
-        <select id="fStore"><option value="">All branches</option></select>
-        <select id="fLevel">
-          <option value="">All risk levels</option>
-          <option value="High">High</option>
-          <option value="Medium">Medium</option>
-          <option value="Low">Low</option>
-        </select>
-        <input id="fSearch" type="search" placeholder="Search item or branch…">
-        <span id="rowCount" class="muted"></span>
+      <section class="panel settings reveal" aria-label="Detection settings">
+        <div class="settings-head">
+          <h2 class="section-title">Detection rules</h2>
+          <p class="muted small">Adjust and the report recalculates instantly.</p>
+        </div>
+        <div class="settings-grid">
+          <label class="field"><span>Limit per customer</span>
+            <input id="optLimit" type="number" min="1" max="20" value="2" inputmode="numeric">
+          </label>
+          <label class="field"><span>Max gap between invoices</span>
+            <span class="input-suffix"><input id="optGap" type="number" min="0.5" max="60" step="0.5" value="3" inputmode="decimal"><em>min</em></span>
+          </label>
+          <label class="field"><span>Min invoices in a run</span>
+            <input id="optMinInv" type="number" min="2" max="20" value="2" inputmode="numeric">
+          </label>
+          <label class="field"><span>“Same colour” means</span>
+            <select id="optGroup">
+              <option value="sku">Same item / SKU</option>
+              <option value="colour">Same colour across items</option>
+            </select>
+          </label>
+        </div>
       </section>
 
-      <section id="tableWrap" class="table-wrap"></section>
+      <section class="panel chart-panel reveal" aria-labelledby="chartTitle">
+        <div class="panel-head">
+          <div>
+            <h2 class="section-title" id="chartTitle">Where the excess mugs are</h2>
+            <p class="muted small">Mugs sold over the limit, top 10 branches. Click a bar to open that branch.</p>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><i class="sw sw-direct"></i>Direct violations</span>
+            <span><i class="sw sw-split"></i>Split-invoice runs</span>
+          </div>
+        </div>
+        <div id="chart" class="chart"></div>
+      </section>
+
+      <section class="panel table-panel reveal" aria-label="Details">
+        <nav class="tabs" role="tablist" id="tabs">
+          <button role="tab" data-tab="stores" class="active" aria-selected="true">Branches</button>
+          <button role="tab" data-tab="runs">Split runs <span class="pill" id="cntRuns"></span></button>
+          <button role="tab" data-tab="direct">Direct violations <span class="pill" id="cntDirect"></span></button>
+          <button role="tab" data-tab="zero">Zero-qty <span class="pill" id="cntZero"></span></button>
+          <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
+        </nav>
+        <div class="filters">
+          <select id="fStore" aria-label="Branch"><option value="">All branches</option></select>
+          <select id="fLevel" aria-label="Risk level">
+            <option value="">All risk levels</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <label class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>
+            <input id="fSearch" type="search" placeholder="Search item or branch" aria-label="Search">
+          </label>
+          <span id="rowCount" class="muted small"></span>
+        </div>
+        <div id="tableWrap" class="table-wrap"></div>
+      </section>
     </div>
 
-    <section id="empty" class="empty">
-      <h2>What this flags</h2>
-      <div class="cards">
-        <article>
-          <h3>Direct violation</h3>
-          <p>One invoice has more than the limit of the same colour, e.g. 6 × Al-Haram Beige.</p>
-        </article>
-        <article>
-          <h3>Split-invoice run</h3>
-          <p>The same branch rings the same colour on back-to-back invoices, each within the limit, that together go over it. Scored against that branch’s normal pace so busy branches aren’t over-flagged.</p>
-        </article>
-        <article>
-          <h3>Zero-qty lines</h3>
-          <p>Lines with 0 quantity / SAR 0, likely voids or returns, listed for review.</p>
-        </article>
-      </div>
-    </section>
+    <div id="empty" class="landing">
+      <section class="section reveal">
+        <p class="eyebrow dark">How it works</p>
+        <h2 class="display">Three checks, one daily file.</h2>
+        <div class="steps">
+          <article class="step">
+            <span class="step-n">01</span>
+            <h3>Direct violation</h3>
+            <p>One invoice has more than two mugs of one colour, for example 6 × Al-Haram Beige.</p>
+          </article>
+          <article class="step">
+            <span class="step-n">02</span>
+            <h3>Split-invoice run</h3>
+            <p>The same colour rung on back-to-back invoices, each within the limit, adding up to more. Scored against the branch’s normal pace, so a busy Haram queue isn’t treated like a 1 AM burst.</p>
+          </article>
+          <article class="step">
+            <span class="step-n">03</span>
+            <h3>Zero-quantity lines</h3>
+            <p>Lines with 0 quantity or SAR 0, likely voids or returns, listed for review.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="split">
+          <div>
+            <p class="eyebrow dark">Reading a flag</p>
+            <h2 class="display">A score that explains itself.</h2>
+            <p class="muted body-copy">Every split run gets a 0–100 risk score. Open it to see why: how many invoices, how many mugs over the limit, how far above normal pace, and whether the baskets were identical.</p>
+          </div>
+          <ul class="score-list">
+            <li><span>Invoices in the run</span><b>up to 30</b></li>
+            <li><span>Mugs over the limit</span><b>up to 25</b></li>
+            <li><span>Burst vs normal pace</span><b>up to 30</b></li>
+            <li><span>Identical baskets</span><b>up to 15</b></li>
+            <li class="levels"><span class="badge High">High ≥ 60</span><span class="badge Medium">Medium 35–59</span><span class="badge Low">Low &lt; 35</span></li>
+          </ul>
+        </div>
+      </section>
+    </div>
   </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span><span class="monogram sm" aria-hidden="true">HM</span> Half Million · Mugs SOP Monitor</span>
+      <span class="muted">Limit: <b id="hdrLimit">2</b> of one colour per customer · Prototype</span>
+    </div>
+  </footer>
+
+  <div id="tip" class="tip" role="tooltip" hidden></div>
 
   <dialog id="help">
     <form method="dialog">
-      <h2>How the checks work</h2>
+      <p class="eyebrow dark">Method</p>
+      <h2 class="display sm">How the checks work</h2>
       <h3>1. Rebuilding invoices</h3>
-      <p>The export has no invoice number, so lines with the same <b>branch + closing time</b> (to the millisecond) are treated as one invoice. If a future export includes an invoice/receipt column, it is used automatically.</p>
+      <p>The export has no invoice number, so lines with the same <b>branch + closing time</b> (to the millisecond) count as one invoice. If a future export includes an invoice or receipt column, the app uses it automatically.</p>
       <h3>2. Direct violations</h3>
       <p>Any invoice with more than the limit of one item (or colour, depending on the setting).</p>
       <h3>3. Split-invoice runs</h3>
       <p>For each branch and colour, invoices are put in time order. Invoices no more than the max gap apart are chained into a run. A run is flagged when it has at least the minimum number of invoices, every invoice is within the limit, and the run total is over the limit.</p>
       <h3>4. Risk score (0–100)</h3>
       <ul>
-        <li><b>Invoices in run</b> up to 30 pts (5 per extra invoice)</li>
-        <li><b>Mugs over the limit</b> up to 25 pts (2.5 per mug)</li>
-        <li><b>Burst vs normal</b> up to 30 pts: how many times faster this branch sold this colour during the run than its normal pace for the rest of the day. A busy Haram branch selling quickly scores low; a quiet branch suddenly ringing 20 invoices in 10 minutes scores high.</li>
-        <li><b>Identical baskets</b> up to 15 pts: share of invoices in the run with exactly the same contents (runs of 3+).</li>
+        <li><b>Invoices in run:</b> up to 30 pts (5 per extra invoice)</li>
+        <li><b>Mugs over the limit:</b> up to 25 pts (2.5 per mug)</li>
+        <li><b>Burst vs normal pace:</b> up to 30 pts. How many times faster the branch sold this colour during the run than over the rest of the day.</li>
+        <li><b>Identical baskets:</b> up to 15 pts. Share of invoices in the run with exactly the same contents (runs of 3+).</li>
       </ul>
-      <p><b>High</b> ≥ 60, <b>Medium</b> 35–59, <b>Low</b> &lt; 35.</p>
       <h3>Limits of this version</h3>
-      <p>Without a card token, customer mobile or cashier ID in the export, a split run is <i>likely</i>, not proven: a real queue of different customers can look the same. Use the run detail to check with the branch, and the CCTV/POS logs for High runs.</p>
-      <div class="dialog-actions"><button class="primary">Close</button></div>
+      <p>Without a card token, customer mobile or cashier ID in the export, a split run is <i>likely</i>, not proven. A real queue of different customers can look the same. Check High runs with the branch, POS logs and CCTV.</p>
+      <div class="dialog-actions"><button class="btn btn-primary">Got it</button></div>
     </form>
   </dialog>
 

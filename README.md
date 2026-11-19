@@ -34,6 +34,12 @@ All thresholds (limit, gap, min invoices, “same colour” = same SKU or same c
 
 The current export has no customer, card or cashier field, so a split run is *likely*, not proven. Phase 2 needs the POS to export: invoice number, cashier ID, payment method, card token / masked card + terminal, customer mobile/loyalty ID, and voids/returns. With these the same rules can link invoices to one payer and separate genuine family purchases from splits.
 
+## Design
+
+Half Million theme (deep green, sand and gold) with light and dark mode. Brand colours are CSS variables at the top of `css/styles.css` (`--hm-*`); replace them with the official HM brand codes if they differ. Chart colours were checked for colour-blind separation in both themes.
+
+Motion follows Emil Kowalski's design-engineering guidelines (github.com/emilkowalski/skills): a one-time hero entrance, sections that reveal once on scroll, chart bars that grow once when first in view, a sliding tab indicator, 0.97 press feedback on buttons, and no animation on tables, filters or other actions used many times a day. `prefers-reduced-motion` turns movement off.
+
 ## Project layout
 
 ```
