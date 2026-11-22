@@ -18,7 +18,7 @@
     {
       "binding": "DB",
       "database_name": "mugs-sop",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "d49eb71f-940d-42fd-be94-67331f949226",
       "migrations_dir": "migrations"
     }
   ],
