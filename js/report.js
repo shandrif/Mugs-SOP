@@ -453,7 +453,7 @@
       { key: 'label', header: 'Item / colour', width: 26 },
       { key: 'start', header: 'From', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
       { key: 'end', header: 'To', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
-      { key: 'dur', header: 'Duration (min)', width: 10, num: true, fmt: '0.0' },
+      { key: 'dur', header: 'Duration (min)', width: 10, num: true, fmt: '0.00' },
       { key: 'invoices', header: 'Invoices', width: 9, num: true },
       { key: 'mugs', header: 'Mugs', width: 8, num: true },
       { key: 'excess', header: 'Over limit', width: 9, num: true, bar: C.barSplit },
@@ -471,7 +471,7 @@
     R.runs.forEach(function (r, i) {
       r.detail.forEach(function (d, j) {
         inv.push({ n: i + 1, level: r.level, store: r.store, label: r.label, time: xlDate(d.time),
-          gap: j ? (d.time - r.detail[j - 1].time) / 1000 : null, qty: d.qty, iq: d.invoiceQty, sales: d.sales, basket: d.basket });
+          gap: j ? (d.time - r.detail[j - 1].time) / 60000 : null, qty: d.qty, iq: d.invoiceQty, sales: d.sales, basket: d.basket });
       });
     });
     table(tab('Split run invoices', C.split), [
@@ -480,7 +480,7 @@
       { key: 'store', header: 'Branch', width: 30, bold: true },
       { key: 'label', header: 'Item / colour', width: 26 },
       { key: 'time', header: 'Time', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
-      { key: 'gap', header: 'Gap (sec)', width: 9, num: true, fmt: '0' },
+      { key: 'gap', header: 'Gap (min)', width: 9, num: true, fmt: '0.00' },
       { key: 'qty', header: 'This item', width: 9, num: true },
       { key: 'iq', header: 'Invoice qty', width: 10, num: true },
       { key: 'sales', header: 'Invoice SAR', width: 11, num: true, fmt: '#,##0.00' },

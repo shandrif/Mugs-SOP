@@ -25,7 +25,7 @@
   function pct(v) { return (v * 100).toFixed(1) + '%'; }
   function t(ms) { return E.fmtTime(ms, false); }
   function dt(ms) { return E.fmtTime(ms, true); }
-  function mins(m) { return m < 1 ? Math.round(m * 60) + 's' : m.toFixed(1) + ' min'; }
+  function mins(m) { return (m < 1 ? m.toFixed(2) : m.toFixed(1)) + ' min'; }
   function badge(level) { return '<span class="badge ' + esc(level) + '">' + esc(level) + '</span>'; }
   function plural(n, one, many) { return n0(n) + ' ' + (n === 1 ? one : many); }
   function longDate(ms) {
