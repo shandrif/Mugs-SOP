@@ -463,12 +463,65 @@
     var m = state.mapping;
     $('mapStatus').innerHTML = m
       ? '<b>' + n0(m.count) + ' branches</b> from ' + esc(m.fileName || 'mapping file') +
+        (m.manual && Object.keys(m.manual).length ? ' + ' + Object.keys(m.manual).length + ' added here' : '') +
         (m.savedAt ? '<br><span class="muted small">Loaded ' + new Date(m.savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) +
           (m.savedBy ? ' by ' + esc(m.savedBy) : '') + (cloud.on ? ' · shared with your team' : ' · kept in this browser') + '</span>' : '')
       : 'No mapping loaded. Upload the Master Location Mapping file to sort and filter by area manager, ROM, city and zone.';
     $('btnMapClear').hidden = !m;
     $('btnMap').textContent = m ? 'Replace mapping' : 'Upload mapping';
+    renderMissing();
   }
+  // Branches in the sales file that the mapping file does not cover: pick the area manager here.
+  function renderMissing() {
+    var box = $('mapMissing'), m = state.mapping;
+    if (!m || !state.parsed) { box.innerHTML = ''; return; }
+    var names = {};
+    state.parsed.lines.forEach(function (l) { names[l.store] = 1; });
+    var missing = Object.keys(names).filter(function (s) { return MAP.codeOf(s) && !m.branches[MAP.codeOf(s)]; }).sort();
+    if (!missing.length) { box.innerHTML = ''; return; }
+    var ams = {};
+    Object.keys(m.branches).forEach(function (k) { if (m.branches[k].am) ams[m.branches[k].am] = 1; });
+    var html = '<p class="small strong-label">Branches not in the mapping file</p><datalist id="amList">' +
+      Object.keys(ams).sort().map(function (a) { return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>';
+    var todo = missing.filter(function (s) { return !(m.manual && m.manual[MAP.codeOf(s)]); });
+    var done = missing.filter(function (s) { return m.manual && m.manual[MAP.codeOf(s)]; });
+    if (!todo.length) html = '';
+    var rowHtml = function (s) {
+      var code = MAP.codeOf(s), man = m.manual && m.manual[code];
+      if (man) {
+        return '<div class="miss-row done"><span><b>' + esc(s) + '</b><br><span class="muted small">' + esc(man.am) + ' · ' + esc(man.rom || '—') +
+          ' · ' + esc(man.city || '—') + '</span></span><button type="button" class="btn btn-ghost btn-sm" data-unmap="' + esc(code) + '" aria-label="Remove">Edit</button></div>';
+      }
+      return '<div class="miss-row"><span class="small"><b>' + esc(s) + '</b></span>' +
+        '<span class="miss-input"><input list="amList" placeholder="Area manager" data-store="' + esc(s) + '" aria-label="Area manager for ' + esc(s) + '">' +
+        '<button type="button" class="btn btn-primary btn-sm" data-map="' + esc(s) + '">Save</button></span></div>';
+    };
+    html += todo.map(rowHtml).join('');
+    if (done.length) {
+      html += '<details class="miss-done"' + (todo.length ? '' : '') + '><summary class="small">Added here (' + done.length + ') · click to view or edit</summary>' +
+        done.map(rowHtml).join('') + '</details>';
+    }
+    if (!todo.length) html = '<datalist id="amList">' + Object.keys(ams).sort().map(function (a) { return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>' + html;
+    box.innerHTML = html;
+  }
+  $('mapMissing').addEventListener('click', function (e) {
+    var save = e.target.closest('button[data-map]'), un = e.target.closest('button[data-unmap]');
+    if (!state.mapping) return;
+    var m = state.mapping;
+    if (save) {
+      var store = save.getAttribute('data-map');
+      var am = save.parentNode.querySelector('input').value.trim();
+      if (!am) { toast('Type or pick the area manager first', 'error'); return; }
+      m.manual = m.manual || {};
+      var b = MAP.inferBranch(m, store, am);
+      m.manual[b.code] = b;
+      setMapping(m, true);
+      toast(store + ' → ' + b.am + (b.rom ? ' · ROM ' + b.rom : ''));
+    } else if (un) {
+      delete m.manual[un.getAttribute('data-unmap')];
+      setMapping(m, true);
+    }
+  });
   function setMapping(m, persist) {
     state.mapping = m;
     renderMapStatus();
@@ -490,6 +543,10 @@
         var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         var m = MAP.parseWorkbook(XLSX, wb);
         m.fileName = f.name; m.savedAt = Date.now();
+        if (state.mapping && state.mapping.manual) {
+          m.manual = {};
+          Object.keys(state.mapping.manual).forEach(function (k) { if (!m.branches[k]) m.manual[k] = state.mapping.manual[k]; });
+        }
         setMapping(m, true);
         if (!cloud.on) toast('Mapping loaded: ' + m.count + ' branches');
       } catch (err) { console.error(err); toast('Could not read the mapping: ' + err.message, 'error'); }
@@ -549,6 +606,7 @@
     });
     state.result = res;
     renderScope();
+    renderMissing();
     var T = res.totals;
     document.body.classList.add('has-data');
     $('empty').hidden = true;
