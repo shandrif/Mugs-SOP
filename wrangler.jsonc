@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mugs-sop",
+  "account_id": "9ca5e366700c58875109a636ebf1a04e",
   "main": "worker/index.js",
   "compatibility_date": "2026-11-22",
   "compatibility_flags": ["nodejs_compat"],
