@@ -15,6 +15,14 @@ Each branch gets a risk level (High / Medium / Low / Clean). Click a branch to s
 
 **Privacy:** the file is read in your browser. No data is uploaded anywhere, and sales exports are git-ignored so they are never committed.
 
+## Excel report
+
+**Export report** downloads `HM Mugs SOP report <date>.xlsx`:
+
+- **Dashboard:** HM title band with date, file and rules; six KPI tiles; charts of excess mugs by branch (top 10) and by hour of day; top 10 split runs and direct violations; branches by risk level; how-to-read note. Set up to print on one landscape page width.
+- **Branches, Split runs, Split run invoices, Direct violations, Zero-qty lines:** green header, coloured risk labels, bars inside cells for the key numbers, filters, frozen headers, real dates and number formats.
+- **Settings:** rules used and method notes.
+
 ## How detection works
 
 1. **Invoices** – the export has no invoice number, so lines with the same *branch + closing time (ms)* form one invoice. If a later export adds an invoice/receipt column it is picked up automatically.
@@ -46,8 +54,10 @@ Motion follows Emil Kowalski's design-engineering guidelines (github.com/emilkow
 index.html           page
 css/styles.css       styles (light + dark)
 js/engine.js         parsing + detection (pure JS, also runs in Node)
-js/app.js            UI: upload, tables, drill-down, Excel export
-vendor/xlsx.full.min.js  SheetJS 0.18.5 (Apache-2.0), bundled so no CDN is needed
+js/app.js            UI: upload, tables, drill-down, export button
+js/report.js         branded Excel report (Dashboard + styled sheets, charts as images)
+vendor/xlsx.full.min.js  SheetJS 0.18.5 (Apache-2.0), reads the export
+vendor/exceljs.min.js    ExcelJS 4.4.0 (MIT), writes the branded report; loaded only on export
 tests/engine.test.js unit tests: `node tests/engine.test.js`
 ```
 

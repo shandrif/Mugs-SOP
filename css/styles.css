@@ -238,7 +238,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--hm-sand); te
 .drop-sub { color: rgba(233, 220, 192, 0.75); font-size: 14px; }
 .drop-note { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: rgba(233, 220, 192, 0.6); }
 .drop-note svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
-.drop-again { display: none; }
+.drop-again, .drop-clear { display: none; }
 
 /* hero after a file is loaded: compact */
 body.has-data .hero { padding: 104px 0 40px; }
@@ -248,7 +248,9 @@ body.has-data .hero h1 { font-size: clamp(30px, 4.4vw, 46px); margin-top: 10px; 
 body.has-data .hero-inner { grid-template-columns: 1fr auto; align-items: end; }
 body.has-data .drop { padding: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 body.has-data .drop::before, body.has-data .mugs, body.has-data .drop-body { display: none; }
-body.has-data .drop-again { display: inline-flex; }
+body.has-data .drop-again, body.has-data .drop-clear { display: inline-flex; }
+body.has-data .drop { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; cursor: default; }
+body.has-data .drop-clear { background: transparent; }
 body.has-data .drop.over .drop-again { background: rgba(233, 220, 192, 0.3); }
 
 @media (max-width: 860px) {
@@ -548,7 +550,7 @@ dialog ul { padding-left: 18px; margin: 0; display: grid; gap: 4px; }
 body.has-data .hero-report > * { animation: rise 600ms var(--ease-out) both; --rise: 12px; }
 body.has-data .hero-report > :nth-child(2) { animation-delay: 60ms; --rise: 16px; }
 body.has-data .hero-report > :nth-child(3) { animation-delay: 120ms; --rise: 8px; }
-body.has-data .drop-again { animation: rise 600ms var(--ease-out) 160ms both; --rise: 8px; }
+body.has-data .drop-again, body.has-data .drop-clear { animation: rise 600ms var(--ease-out) 160ms both; --rise: 8px; }
 
 /* ---------- KPI cards: numbers always fit, cards are shortcuts ---------- */
 .kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -609,6 +611,12 @@ body.has-data .drop-again { animation: rise 600ms var(--ease-out) 160ms both; --
   .steam path { opacity: 0.4; }
   .kpis.enter .kpi { animation: fade 300ms ease both; }
   .kpis.enter .kpi::after { animation: none; }
-  body.has-data .hero-report > *, body.has-data .drop-again { animation: fade 300ms ease both; }
+  body.has-data .hero-report > *, body.has-data .drop-again, body.has-data .drop-clear { animation: fade 300ms ease both; }
   .kpi[data-go]:hover { transform: none; }
 }
+
+/* export button while the workbook is being built */
+.btn.busy { opacity: 0.75; cursor: progress; }
+.btn.busy svg { animation: nudge 900ms var(--ease-in-out) infinite; }
+@keyframes nudge { 50% { transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .btn.busy svg { animation: none; } }

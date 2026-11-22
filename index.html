@@ -35,7 +35,7 @@
         <button id="btnHelp" class="btn btn-ghost" type="button">How it works</button>
         <button id="btnExport" class="btn btn-primary" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>
-          <span>Export</span>
+          <span>Export report</span>
         </button>
       </div>
     </div>
@@ -68,10 +68,13 @@
         <div class="drop-body">
           <strong class="drop-title">Drop the “Sales By Product” export</strong>
           <span class="drop-sub">or <button type="button" class="link" id="btnPick">browse files</button> · .xlsx, .xls, .csv</span>
-          <span class="drop-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Read in your browser only. Nothing is uploaded.</span>
+          <span class="drop-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Read in your browser only. Nothing is uploaded. The last file is kept on this computer until you clear it.</span>
         </div>
         <button type="button" class="btn btn-on-dark drop-again" id="btnAgain">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0-4 4m4-4 4 4M5 19h14"/></svg>Load another day
+        </button>
+        <button type="button" class="btn btn-on-dark drop-clear" id="btnClear" title="Remove the saved report from this browser">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>Clear
         </button>
       </div>
     </div>
@@ -227,6 +230,7 @@
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="js/engine.js"></script>
+  <script src="js/report.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

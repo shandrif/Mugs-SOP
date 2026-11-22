@@ -80,20 +80,55 @@
 
   function showError(msg) { var el = $('error'); el.textContent = msg; el.hidden = !msg; }
 
+  /* ---------- remember the last file in this browser (IndexedDB) ---------- */
+  // Stays on this computer only. Restored on refresh; "Clear" removes it.
+  var store = (function () {
+    var DB = 'mugs-sop', OS = 'files', KEY = 'last';
+    function open() {
+      return new Promise(function (res, rej) {
+        if (!('indexedDB' in window)) return rej(new Error('no indexedDB'));
+        var r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore(OS); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error); };
+      });
+    }
+    function tx(mode, fn) {
+      return open().then(function (db) {
+        return new Promise(function (res, rej) {
+          var t = db.transaction(OS, mode), req = fn(t.objectStore(OS));
+          t.oncomplete = function () { db.close(); res(req && req.result); };
+          t.onerror = t.onabort = function () { db.close(); rej(t.error); };
+        });
+      });
+    }
+    return {
+      save: function (rec) { return tx('readwrite', function (s) { return s.put(rec, KEY); }).catch(function () {}); },
+      get: function () { return tx('readonly', function (s) { return s.get(KEY); }).catch(function () { return null; }); },
+      clear: function () { return tx('readwrite', function (s) { return s.delete(KEY); }).catch(function () {}); }
+    };
+  })();
+
+  function process(buf, name, savedAt) {
+    var wb = XLSX.read(new Uint8Array(buf), { type: 'array', raw: false, cellDates: false });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    var parsed = E.parseRows(rows);
+    if (!parsed.lines.length) throw new Error('No sale lines found in this file.');
+    state.parsed = parsed; state.fileName = name; state.savedAt = savedAt; state.open = {};
+    state.filter = { store: '', level: '', q: '' };
+    $('fStore').value = ''; $('fLevel').value = ''; $('fSearch').value = '';
+    run(true);
+  }
+
   function load(file) {
     showError('');
     var reader = new FileReader();
     reader.onload = function (e) {
+      var buf = e.target.result, now = Date.now();
       try {
-        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', raw: false, cellDates: false });
-        var ws = wb.Sheets[wb.SheetNames[0]];
-        var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-        var parsed = E.parseRows(rows);
-        if (!parsed.lines.length) throw new Error('No sale lines found in this file.');
-        state.parsed = parsed; state.fileName = file.name; state.open = {};
-        state.filter = { store: '', level: '', q: '' };
-        $('fStore').value = ''; $('fLevel').value = ''; $('fSearch').value = '';
-        run(true);
+        process(buf, file.name, now);
+        store.save({ name: file.name, bytes: buf, savedAt: now });
       } catch (err) {
         console.error(err);
         showError('Could not read “' + file.name + '”: ' + err.message);
@@ -101,6 +136,19 @@
     };
     reader.readAsArrayBuffer(file);
   }
+
+  // Bring back the last report after a refresh.
+  store.get().then(function (rec) {
+    if (!rec || !rec.bytes || state.parsed) return;
+    try { process(rec.bytes, rec.name, rec.savedAt); }
+    catch (err) { console.error(err); store.clear(); }
+  });
+
+  $('btnClear').addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!window.confirm('Remove the saved report from this browser?')) return;
+    store.clear().then(function () { location.reload(); });
+  });
 
   /* ---------- settings ---------- */
   function readOptions() {
@@ -143,7 +191,8 @@
     $('reportTitle').textContent = longDate(T.start);
     $('fileInfo').textContent = state.fileName + ' · ' + plural(T.stores, 'branch', 'branches') + ' · ' +
       dt(T.start) + ' → ' + dt(T.end) +
-      (state.parsed.warnings.length ? ' · ' + plural(state.parsed.warnings.length, 'row', 'rows') + ' skipped' : '');
+      (state.parsed.warnings.length ? ' · ' + plural(state.parsed.warnings.length, 'row', 'rows') + ' skipped' : '') +
+      (state.savedAt ? ' · Saved in this browser ' + new Date(state.savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 
     var fs = $('fStore');
     fs.innerHTML = '<option value="">All branches</option>' + res.stores.map(function (s) {
@@ -484,46 +533,42 @@
   $('fSearch').addEventListener('input', function () { state.filter.q = this.value; renderTable(); });
 
   /* ---------- export ---------- */
-  $('btnExport').addEventListener('click', function () {
-    var R = state.result, o = R.options, wb = XLSX.utils.book_new();
-    var add = function (name, rows) { XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'none' }]), name); };
-    add('Branches', R.stores.map(function (s) {
-      return { Risk: s.status, Branch: s.store, Invoices: s.invoices, Mugs: s.mugs, 'Net sales SAR': +s.sales.toFixed(2),
-        'Direct violations': s.directLines, 'Mugs over (direct)': s.directExcess, 'Split runs': s.runs, 'High runs': s.runsHigh,
-        'Medium runs': s.runsMedium, 'Mugs in split runs': s.runMugs, 'Mugs over (split)': s.runExcess,
-        '% mugs over limit': +(s.pctOver * 100).toFixed(2), 'Zero-qty lines': s.zero };
-    }));
-    add('Split runs', R.runs.map(function (r, i) {
-      return { 'Run #': i + 1, Risk: r.level, Score: r.score, Branch: r.store, 'Item / colour': r.label, Items: r.items,
-        From: dt(r.start), To: dt(r.end), 'Duration min': +r.durationMin.toFixed(2), Invoices: r.invoices, Mugs: r.mugs,
-        'Over limit': r.excess, 'SAR': +r.sales.toFixed(2), 'x normal pace': +r.burst.toFixed(1),
-        'Same basket %': r.invoices >= 3 ? +(r.identical * 100).toFixed(1) : null, 'Most common basket': r.topBasket };
-    }));
-    var inv = [];
-    R.runs.forEach(function (r, i) {
-      r.detail.forEach(function (d) {
-        inv.push({ 'Run #': i + 1, Risk: r.level, Branch: r.store, 'Item / colour': r.label, Time: dt(d.time),
-          'This item qty': d.qty, 'Invoice qty': d.invoiceQty, 'Invoice SAR': +d.sales.toFixed(2), 'Full invoice': d.basket });
+  // The branded workbook needs ExcelJS (~0.9 MB); load it only when someone exports.
+  var excelJsReady = null;
+  function loadExcelJs() {
+    if (window.ExcelJS) return Promise.resolve();
+    if (!excelJsReady) {
+      excelJsReady = new Promise(function (res, rej) {
+        var s = document.createElement('script');
+        s.src = 'vendor/exceljs.min.js';
+        s.onload = res;
+        s.onerror = function () { excelJsReady = null; rej(new Error('Could not load the Excel library.')); };
+        document.head.appendChild(s);
       });
+    }
+    return excelJsReady;
+  }
+  var btnExport = $('btnExport');
+  btnExport.addEventListener('click', function () {
+    if (!state.result || btnExport.classList.contains('busy')) return;
+    var label = btnExport.querySelector('span'), prev = label.textContent;
+    btnExport.classList.add('busy'); btnExport.setAttribute('aria-busy', 'true'); label.textContent = 'Preparing…';
+    loadExcelJs().then(function () {
+      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.parsed.reportDate });
+    }).then(function (blob) {
+      var d = new Date(state.result.totals.start);
+      var day = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'HM Mugs SOP report ' + day + '.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    }).catch(function (err) {
+      console.error(err);
+      showError('Export failed: ' + err.message);
+    }).then(function () {
+      btnExport.classList.remove('busy'); btnExport.removeAttribute('aria-busy'); label.textContent = prev;
     });
-    add('Split run invoices', inv);
-    add('Direct violations', R.direct.map(function (d) {
-      return { Branch: d.store, 'Item / colour': d.label, Items: d.items, Time: dt(d.time), Qty: d.qty,
-        'Over limit': d.excess, SAR: +d.sales.toFixed(2), 'Full invoice': d.basket };
-    }));
-    add('Zero-qty lines', R.zero.map(function (z) {
-      return { Branch: z.store, Item: z.item, Time: dt(z.time), Qty: z.qty, SAR: z.sales };
-    }));
-    add('Settings', [
-      { Setting: 'Source file', Value: state.fileName },
-      { Setting: 'Report date', Value: state.parsed.reportDate || '' },
-      { Setting: 'Limit per customer', Value: o.limit },
-      { Setting: 'Max gap between invoices (min)', Value: o.gapMinutes },
-      { Setting: 'Min invoices in a run', Value: o.minInvoices },
-      { Setting: 'Grouping', Value: o.groupBy === 'colour' ? 'Same colour across items' : 'Same item / SKU' }
-    ]);
-    var base = state.fileName.replace(/\.[^.]+$/, '');
-    XLSX.writeFile(wb, 'SOP-flags_' + base + '.xlsx');
   });
 
   /* ---------- help ---------- */
