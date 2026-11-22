@@ -424,6 +424,10 @@
     wb.title = 'Mugs SOP report ' + fmtDate(R.totals.start);
 
     var images = { branches: chartBranches(R.stores), hours: chartHours(R) };
+    var rv = meta.reviews || null, rvLabels = meta.reviewLabels || {};
+    var review = function (key) { var x = rv && rv[key]; return x ? (rvLabels[x.status] || x.status) : 'Not reviewed'; };
+    var reviewNote = function (key) { var x = rv && rv[key]; return x ? (x.note || '') + (x.reviewedBy ? ' (' + x.reviewedBy + ')' : '') : ''; };
+    var reviewCols = rv ? [{ key: 'review', header: 'Review', width: 18 }, { key: 'note', header: 'Review note', width: 40, wrap: true }] : [];
 
     var tab = function (name, color) { return wb.addWorksheet(name, { properties: { tabColor: { argb: A(color) } } }); };
     dashboard(wb, tab('Dashboard', C.green), R, meta, images);
@@ -461,10 +465,11 @@
       { key: 'pace', header: '× normal pace', width: 11, num: true, fmt: '[>=100]"100+";0.0' },
       { key: 'same', header: 'Same basket', width: 11, num: true, fmt: '0%' },
       { key: 'basket', header: 'Most common basket', width: 60, wrap: true }
-    ], R.runs.map(function (r, i) {
+    ].concat(reviewCols), R.runs.map(function (r, i) {
+      var k = meta.runKey ? meta.runKey(r) : '';
       return { n: i + 1, level: r.level, score: r.score, store: r.store, label: r.label, start: xlDate(r.start), end: xlDate(r.end),
         dur: r.durationMin, invoices: r.invoices, mugs: r.mugs, excess: r.excess, sales: r.sales, pace: Math.min(r.burst, 100),
-        same: r.invoices >= 3 ? r.identical : null, basket: r.topBasket };
+        same: r.invoices >= 3 ? r.identical : null, basket: r.topBasket, review: review(k), note: reviewNote(k) };
     }), { freezeCols: 4 });
 
     var inv = [];
@@ -496,8 +501,10 @@
       { key: 'excess', header: 'Over limit', width: 9, num: true },
       { key: 'sales', header: 'SAR', width: 11, num: true, fmt: '#,##0.00' },
       { key: 'basket', header: 'Full invoice', width: 70, wrap: true }
-    ], R.direct.map(function (d) {
-      return { store: d.store, label: d.label, items: d.items, time: xlDate(d.time), qty: d.qty, excess: d.excess, sales: d.sales, basket: d.basket };
+    ].concat(reviewCols), R.direct.map(function (d) {
+      var k = meta.directKey ? meta.directKey(d) : '';
+      return { store: d.store, label: d.label, items: d.items, time: xlDate(d.time), qty: d.qty, excess: d.excess, sales: d.sales, basket: d.basket,
+        review: review(k), note: reviewNote(k) };
     }), { freezeCols: 1 });
 
     table(tab('Zero-qty lines', C.muted), [

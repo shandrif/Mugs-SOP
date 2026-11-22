@@ -6,6 +6,7 @@
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var state = {
+    reviews: {}, cloudReport: null,
     parsed: null, result: null, fileName: '',
     tab: 'stores', sort: {}, open: {},
     filter: { store: '', level: '', q: '' },
@@ -109,45 +110,294 @@
     };
   })();
 
-  function process(buf, name, savedAt) {
+  function parseBuffer(buf) {
     var wb = XLSX.read(new Uint8Array(buf), { type: 'array', raw: false, cellDates: false });
     var ws = wb.Sheets[wb.SheetNames[0]];
     var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
     var parsed = E.parseRows(rows);
     if (!parsed.lines.length) throw new Error('No sale lines found in this file.');
-    state.parsed = parsed; state.fileName = name; state.savedAt = savedAt; state.open = {};
+    return parsed;
+  }
+  // Show a parsed report. meta: { savedAt } for browser-saved, { cloud } for cloud reports.
+  function useParsed(parsed, name, meta) {
+    meta = meta || {};
+    state.parsed = parsed; state.fileName = name; state.savedAt = meta.savedAt || null;
+    state.cloudReport = meta.cloud || null; state.reviews = meta.reviews || {};
+    state.open = {};
     state.filter = { store: '', level: '', q: '' };
     $('fStore').value = ''; $('fLevel').value = ''; $('fSearch').value = '';
     run(true);
   }
+  function process(buf, name, savedAt) { useParsed(parseBuffer(buf), name, { savedAt: savedAt }); }
 
   function load(file) {
     showError('');
     var reader = new FileReader();
     reader.onload = function (e) {
-      var buf = e.target.result, now = Date.now();
+      var buf = e.target.result, now = Date.now(), parsed;
       try {
-        process(buf, file.name, now);
-        store.save({ name: file.name, bytes: buf, savedAt: now });
+        parsed = parseBuffer(buf);
       } catch (err) {
         console.error(err);
         showError('Could not read “' + file.name + '”: ' + err.message);
+        return;
+      }
+      if (cloud.on) {
+        useParsed(parsed, file.name, {});
+        cloud.save(buf, file, parsed);
+      } else {
+        useParsed(parsed, file.name, { savedAt: now });
+        store.save({ name: file.name, bytes: buf, savedAt: now });
       }
     };
     reader.readAsArrayBuffer(file);
   }
 
-  // Bring back the last report after a refresh.
-  store.get().then(function (rec) {
-    if (!rec || !rec.bytes || state.parsed) return;
-    try { process(rec.bytes, rec.name, rec.savedAt); }
-    catch (err) { console.error(err); store.clear(); }
-  });
-
   $('btnClear').addEventListener('click', function (e) {
     e.stopPropagation();
     if (!window.confirm('Remove the saved report from this browser?')) return;
     store.clear().then(function () { location.reload(); });
+  });
+
+  /* ---------- cloud mode (Cloudflare Worker API) ---------- */
+  // Active only when /api/me answers (the Cloudflare deployment). On GitHub Pages
+  // the app stays local-only and keeps the last file in this browser.
+  var REVIEW_LABELS = { open: 'Open', genuine: 'Genuine (family/group)', violation: 'Violation', false_positive: 'False positive' };
+  function runKey(r) { return 'run|' + r.store + '|' + r.label + '|' + r.start; }
+  function directKey(d) { return 'direct|' + d.store + '|' + d.label + '|' + d.time; }
+  function isoDate(parsed, T) {
+    var m = parsed.reportDate && String(parsed.reportDate).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return m[3] + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
+    return new Date(T.start).toISOString().slice(0, 10);
+  }
+  function toast(msg, kind) {
+    var el = $('toast');
+    el.textContent = msg; el.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(el._t);
+    if (kind !== 'busy') el._t = setTimeout(function () { el.className = 'toast'; }, 4200);
+  }
+  function gzip(text) {
+    return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  }
+  function api(path, opts) {
+    opts = opts || {};
+    var init = { method: opts.method || 'GET', headers: {}, credentials: 'same-origin' };
+    if (opts.json !== undefined) { init.body = JSON.stringify(opts.json); init.headers['content-type'] = 'application/json'; }
+    if (opts.body !== undefined) { init.body = opts.body; if (opts.type) init.headers['content-type'] = opts.type; }
+    return fetch(path, init).then(function (res) {
+      if (opts.raw && res.ok) return res;
+      return res.text().then(function (txt) {
+        var data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { /* not json */ }
+        if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+        return data;
+      });
+    });
+  }
+
+  var cloud = {
+    on: false, me: null, reports: [],
+    init: function () {
+      var ctrl = 'AbortController' in window ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 5000) : null;
+      return fetch('/api/me', { credentials: 'same-origin', signal: ctrl ? ctrl.signal : undefined })
+        .then(function (res) {
+          clearTimeout(timer);
+          var type = res.headers.get('content-type') || '';
+          if (!res.ok || type.indexOf('application/json') < 0) return false;
+          return res.json().then(function (me) {
+            if (!me || !me.email) return false;
+            cloud.on = true; cloud.me = me;
+            document.body.classList.add('cloud');
+            $('userChip').hidden = false;
+            $('userEmail').textContent = me.email;
+            $('retentionDays').textContent = me.retentionDays;
+            return true;
+          });
+        }).catch(function () { clearTimeout(timer); return false; });
+    },
+    refresh: function () {
+      return api('/api/reports').then(function (d) { cloud.reports = d.reports || []; renderHistory(); return cloud.reports; });
+    },
+    open: function (id) {
+      toast('Opening report…', 'busy');
+      var meta;
+      return api('/api/reports/' + id).then(function (m) {
+        meta = m;
+        return Promise.all([
+          api('/api/reports/' + id + '/lines', { raw: true }).then(function (res) {
+            return new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).json();
+          }),
+          api('/api/reports/' + id + '/reviews')
+        ]);
+      }).then(function (out) {
+        var data = out[0], reviews = {};
+        (out[1].reviews || []).forEach(function (r) { reviews[r.flagKey] = r; });
+        useParsed({ lines: data.lines, warnings: [], reportDate: data.reportDate }, meta.fileName, { cloud: meta, reviews: reviews });
+        renderHistory();
+        toast('Opened ' + longDate(meta.periodStart || Date.parse(meta.reportDate)) + ' from HM cloud');
+      }).catch(function (err) { console.error(err); toast('Could not open report: ' + err.message, 'error'); });
+    },
+    save: function (buf, file, parsed) {
+      var R = state.result, T = R.totals, id;
+      toast('Saving to HM cloud…', 'busy');
+      var body = {
+        reportDate: isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength,
+        periodStart: T.start, periodEnd: T.end, rules: R.options,
+        totals: {
+          mugs: T.mugs, sales: Math.round(T.sales * 100) / 100, invoices: T.invoices, stores: T.stores,
+          directLines: T.directLines, directExcess: T.directExcess, runs: T.runs, runsHigh: T.runsHigh,
+          runsMedium: T.runsMedium, zero: T.zero, highStores: R.stores.filter(function (s) { return s.status === 'High'; }).length
+        },
+        stores: R.stores.map(function (s) {
+          return { store: s.store, status: s.status, invoices: s.invoices, mugs: s.mugs, sales: Math.round(s.sales * 100) / 100,
+            directLines: s.directLines, directExcess: s.directExcess, runs: s.runs, runsHigh: s.runsHigh,
+            runExcess: s.runExcess, pctOver: Math.round(s.pctOver * 10000) / 10000 };
+        })
+      };
+      var lines = parsed.lines.map(function (l) {
+        return { row: l.row, store: l.store, code: l.code, item: l.item, itemEn: l.itemEn, colour: l.colour, time: l.time,
+          sales: l.sales, qty: l.qty, invoice: l.invoice, cashier: l.cashier, customer: l.customer };
+      });
+      return api('/api/reports', { method: 'POST', json: body }).then(function (d) {
+        id = d.id;
+        return Promise.all([
+          api('/api/reports/' + id + '/file', { method: 'PUT', body: buf, type: file.type || 'application/octet-stream' }),
+          gzip(JSON.stringify({ v: 1, reportDate: parsed.reportDate, lines: lines })).then(function (gz) {
+            return api('/api/reports/' + id + '/lines', { method: 'PUT', body: gz, type: 'application/gzip' });
+          })
+        ]);
+      }).then(function () {
+        return api('/api/reports/' + id + '/complete', { method: 'POST' });
+      }).then(function (res) {
+        return api('/api/reports/' + id).then(function (meta) {
+          state.cloudReport = meta; state.reviews = {};
+          run(false);
+          toast(res.replaced ? 'Saved to HM cloud · replaced the earlier upload for this day' : 'Saved to HM cloud · your team can see it now');
+          cloud.refresh(); renderTrends();
+        });
+      }).catch(function (err) {
+        console.error(err);
+        toast('Not saved to the cloud: ' + err.message + '. The report is still shown here.', 'error');
+      });
+    },
+    remove: function (id) {
+      return api('/api/reports/' + id, { method: 'DELETE' }).then(function () {
+        toast('Report deleted');
+        if (state.cloudReport && state.cloudReport.id === id) { location.reload(); return; }
+        cloud.refresh(); renderTrends();
+      }).catch(function (err) { toast('Could not delete: ' + err.message, 'error'); });
+    },
+    saveReview: function (key, kind, store, status, note) {
+      if (!state.cloudReport) { toast('Save the report to the cloud before reviewing', 'error'); return Promise.resolve(); }
+      return api('/api/reviews', { method: 'PUT', json: { flagKey: key, reportId: state.cloudReport.id, kind: kind, store: store, status: status, note: note } })
+        .then(function (r) {
+          state.reviews[key] = { flagKey: key, kind: kind, store: store, status: status, note: note, reviewedBy: r.reviewedBy, reviewedAt: r.reviewedAt };
+          toast('Review saved: ' + REVIEW_LABELS[status]);
+          renderTable();
+        }).catch(function (err) { toast('Review not saved: ' + err.message, 'error'); });
+    }
+  };
+
+  function reviewBadge(key) {
+    var r = state.reviews && state.reviews[key];
+    var st = r ? r.status : 'open';
+    return '<span class="rv rv-' + st + '">' + esc(r ? REVIEW_LABELS[st] : 'Not reviewed') + '</span>';
+  }
+  function reviewBar(key, kind, store) {
+    if (!cloud.on) return '';
+    var r = (state.reviews && state.reviews[key]) || {};
+    var opts = Object.keys(REVIEW_LABELS).map(function (k) {
+      return '<option value="' + k + '"' + ((r.status || 'open') === k ? ' selected' : '') + '>' + REVIEW_LABELS[k] + '</option>';
+    }).join('');
+    return '<div class="review-bar" data-key="' + esc(key) + '" data-kind="' + kind + '" data-store="' + esc(store) + '">' +
+      '<span class="rv-title">Review</span>' +
+      '<select class="rv-status" aria-label="Review status">' + opts + '</select>' +
+      '<input class="rv-note" type="text" maxlength="500" placeholder="Note (e.g. family of 5, manager approved)" value="' + esc(r.note || '') + '" aria-label="Review note">' +
+      '<button type="button" class="btn btn-primary btn-sm rv-save">Save</button>' +
+      (r.reviewedBy ? '<span class="rv-meta">Last saved by ' + esc(r.reviewedBy) + ' · ' +
+        new Date(r.reviewedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</span>' : '') +
+      '</div>';
+  }
+
+  function renderHistory() {
+    var el = $('historyBody');
+    if (!el) return;
+    var cur = state.cloudReport && state.cloudReport.id;
+    if (!cloud.reports.length) { el.innerHTML = '<tr><td colspan="8" class="empty-row">No reports saved yet. Upload a day to start the history.</td></tr>'; return; }
+    el.innerHTML = cloud.reports.map(function (r) {
+      var T = r.totals || {};
+      return '<tr' + (r.id === cur ? ' class="current"' : '') + '>' +
+        '<td class="strong">' + esc(longDate(Date.parse(r.reportDate + 'T00:00:00Z'))) + (r.id === cur ? ' <span class="pill">open</span>' : '') + '</td>' +
+        '<td>' + esc(r.fileName) + '</td>' +
+        '<td>' + esc(r.uploadedBy || '') + '<br><span class="muted small">' + new Date(r.uploadedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</span></td>' +
+        '<td class="num">' + n0(T.highStores || 0) + '</td><td class="num">' + n0(T.directLines || 0) + '</td>' +
+        '<td class="num">' + n0(T.runs || 0) + '</td><td class="num">' + n0(T.mugs || 0) + '</td>' +
+        '<td class="actions">' +
+          (r.id === cur ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-act="open" data-id="' + r.id + '">Open</button>') +
+          '<a class="btn btn-ghost btn-sm" href="/api/reports/' + r.id + '/file">Original</a>' +
+          '<button type="button" class="btn btn-ghost btn-sm danger" data-act="delete" data-id="' + r.id + '">Delete</button>' +
+        '</td></tr>';
+    }).join('');
+  }
+  $('historyBody').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]');
+    if (!b) return;
+    var id = b.getAttribute('data-id');
+    if (b.getAttribute('data-act') === 'open') { cloud.open(id); window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); }
+    else if (window.confirm('Delete this day for everyone? The uploaded file and its reviews are removed.')) cloud.remove(id);
+  });
+
+  function renderTrends() {
+    if (!cloud.on) return;
+    var days = parseInt($('trendDays').value, 10) || 30;
+    api('/api/trends?days=' + days).then(function (d) {
+      var dates = d.dates || [], by = {};
+      d.rows.forEach(function (r) {
+        var s = by[r.store] = by[r.store] || { store: r.store, days: {}, high: 0, med: 0, excess: 0, last: '' };
+        s.days[r.report_date] = r.status;
+        if (r.status === 'High') { s.high++; s.last = r.report_date > s.last ? r.report_date : s.last; }
+        if (r.status === 'Medium') s.med++;
+        s.excess += (r.direct_excess || 0) + (r.run_excess || 0);
+      });
+      var list = Object.keys(by).map(function (k) { return by[k]; }).filter(function (s) { return s.high || s.med; })
+        .sort(function (a, b) { return b.high - a.high || b.med - a.med || b.excess - a.excess; }).slice(0, 25);
+      $('trendNote').textContent = dates.length
+        ? plural(dates.length, 'day', 'days') + ' of history · branches with any High or Medium day, worst first'
+        : 'No history yet.';
+      if (!list.length) { $('trendWrap').innerHTML = '<p class="muted small">Nothing flagged in this period.</p>'; return; }
+      var short = function (iso) { var p = iso.split('-'); return +p[2] + '/' + +p[1]; };
+      var html = '<table class="heat"><thead><tr><th>Branch</th>' +
+        dates.map(function (dd) { return '<th class="day" title="' + dd + '"><span>' + short(dd) + '</span></th>'; }).join('') +
+        '<th class="num">High days</th><th class="num">Medium days</th><th class="num">Mugs over</th></tr></thead><tbody>' +
+        list.map(function (s) {
+          return '<tr><td class="strong">' + esc(s.store) + '</td>' + dates.map(function (dd) {
+            var st = s.days[dd] || 'none';
+            return '<td class="cell"><i class="hc hc-' + st + '" title="' + esc(s.store + ' · ' + dd + ' · ' + (st === 'none' ? 'no data' : st)) + '"></i></td>';
+          }).join('') + '<td class="num strong">' + s.high + '</td><td class="num">' + s.med + '</td><td class="num">' + n0(s.excess) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      $('trendWrap').innerHTML = html;
+    }).catch(function (err) { $('trendWrap').innerHTML = '<p class="muted small">Could not load trends: ' + esc(err.message) + '</p>'; });
+  }
+  $('trendDays').addEventListener('change', renderTrends);
+  $('btnOriginal').addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (state.cloudReport) window.location.href = '/api/reports/' + state.cloudReport.id + '/file';
+  });
+
+  // Start: cloud if available (open the latest day), otherwise restore from this browser.
+  cloud.init().then(function (on) {
+    if (on) {
+      cloud.refresh().then(function (list) {
+        renderTrends();
+        if (list.length && !state.parsed) cloud.open(list[0].id);
+      }).catch(function (err) { toast('Could not load reports: ' + err.message, 'error'); });
+      return;
+    }
+    store.get().then(function (rec) {
+      if (!rec || !rec.bytes || state.parsed) return;
+      try { process(rec.bytes, rec.name, rec.savedAt); }
+      catch (err) { console.error(err); store.clear(); }
+    });
   });
 
   /* ---------- settings ---------- */
@@ -192,7 +442,10 @@
     $('fileInfo').textContent = state.fileName + ' · ' + plural(T.stores, 'branch', 'branches') + ' · ' +
       dt(T.start) + ' → ' + dt(T.end) +
       (state.parsed.warnings.length ? ' · ' + plural(state.parsed.warnings.length, 'row', 'rows') + ' skipped' : '') +
-      (state.savedAt ? ' · Saved in this browser ' + new Date(state.savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+      (state.cloudReport ? ' · Saved to HM cloud by ' + state.cloudReport.uploadedBy + ', ' +
+        new Date(state.cloudReport.uploadedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) :
+       state.savedAt ? ' · Saved in this browser ' + new Date(state.savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+    $('btnOriginal').hidden = !state.cloudReport;
 
     var fs = $('fStore');
     fs.innerHTML = '<option value="">All branches</option>' + res.stores.map(function (s) {
@@ -389,7 +642,8 @@
       { k: 'mugs', h: 'Mugs', num: 1 },
       { k: 'excess', h: 'Over', num: 1 },
       { k: 'burst', h: '× pace', num: 1, f: function (r) { return r.burst >= 100 ? '100+' : r.burst.toFixed(1); } },
-      { k: 'identical', h: 'Same basket', num: 1, f: function (r) { return r.invoices >= 3 ? pct(r.identical) : '—'; } }
+      { k: 'identical', h: 'Same basket', num: 1, f: function (r) { return r.invoices >= 3 ? pct(r.identical) : '—'; } },
+      { k: 'review', h: 'Review', cloud: 1, f: function (r) { return reviewBadge(runKey(r)); }, sortVal: function (r) { var v = state.reviews[runKey(r)]; return v ? v.status : 'open'; } }
     ],
     direct: [
       { k: 'store', h: 'Branch', cls: 'strong' },
@@ -398,7 +652,8 @@
       { k: 'qty', h: 'Qty', num: 1 },
       { k: 'excess', h: 'Over', num: 1 },
       { k: 'sales', h: 'SAR', num: 1, f: function (r) { return sar(r.sales); } },
-      { k: 'basket', h: 'Full invoice', cls: 'wrap-cell' }
+      { k: 'basket', h: 'Full invoice', cls: 'wrap-cell' },
+      { k: 'review', h: 'Review', cloud: 1, f: function (r) { return reviewBadge(directKey(r)); }, sortVal: function (r) { var v = state.reviews[directKey(r)]; return v ? v.status : 'open'; } }
     ],
     zero: [
       { k: 'store', h: 'Branch', cls: 'strong' },
@@ -428,7 +683,7 @@
   }
 
   function renderTable() {
-    var tab = state.tab, cols = COLS[tab];
+    var tab = state.tab, cols = COLS[tab].filter(function (c) { return !c.cloud || cloud.on; });
     var rows = dataFor(tab).slice();
     var s = state.sort[tab] || DEFAULT_SORT[tab];
     if (s) {
@@ -442,7 +697,8 @@
     }
     $('fLevel').disabled = (tab === 'direct' || tab === 'zero');
     $('rowCount').textContent = plural(rows.length, 'row', 'rows') +
-      (tab === 'stores' ? ' · click a branch to open it' : tab === 'runs' ? ' · click a run for invoice detail' : '');
+      (tab === 'stores' ? ' · click a branch to open it' : tab === 'runs' ? ' · click a run for invoice detail' + (cloud.on ? ' and review' : '') :
+        tab === 'direct' && cloud.on ? ' · click a row to review it' : '');
 
     var html = '<table><thead><tr>' + cols.map(function (c) {
       var arrow = s && s.k === c.k ? (s.dir > 0 ? ' ↑' : ' ↓') : '';
@@ -452,14 +708,15 @@
 
     var MAX = 2000;
     rows.slice(0, MAX).forEach(function (r) {
-      var id = tab === 'runs' ? r.store + '|' + r.label + '|' + r.start : tab === 'stores' ? r.store : '';
-      var clickable = tab === 'runs' || tab === 'stores';
-      var open = tab === 'runs' && state.open[id];
+      var id = tab === 'runs' ? runKey(r) : tab === 'direct' ? directKey(r) : tab === 'stores' ? r.store : '';
+      var clickable = tab === 'runs' || tab === 'stores' || (tab === 'direct' && cloud.on);
+      var open = (tab === 'runs' || tab === 'direct') && state.open[id];
       html += '<tr' + (clickable ? ' class="clickable' + (open ? ' open' : '') + '" data-id="' + esc(id) + '"' : '') + '>' + cols.map(function (c) {
         var v = c.f ? c.f(r) : esc(r[c.k]);
         return '<td class="' + (c.num ? 'num ' : '') + (c.cls || '') + '">' + v + '</td>';
       }).join('') + '</tr>';
-      if (open) html += '<tr class="detail"><td colspan="' + cols.length + '"><div class="detail-inner">' + runDetail(r) + '</div></td></tr>';
+      if (open) html += '<tr class="detail"><td colspan="' + cols.length + '"><div class="detail-inner">' +
+        (tab === 'runs' ? runDetail(r) : directDetail(r)) + '</div></td></tr>';
     });
     if (!rows.length) html += '<tr><td colspan="' + cols.length + '" class="empty-row">Nothing matches these filters.</td></tr>';
     html += '</tbody></table>';
@@ -480,7 +737,8 @@
       [Math.round(r.points.burst), (r.burst >= 100 ? 'Over 100' : r.burst.toFixed(1)) + '× this branch’s normal pace (normally ~' + r.expected.toFixed(2) + ' invoices of this item in a window this long)']
     ];
     if (r.invoices >= 3) why.push([r.points.identical, pct(r.identical) + ' of invoices have the identical basket “' + r.topBasket + '”']);
-    return '<div class="detail-grid"><span>Score <b>' + r.score + '</b> / 100</span><span>Value <b>SAR ' + sar(r.sales) + '</b></span>' +
+    return reviewBar(runKey(r), 'run', r.store) +
+      '<div class="detail-grid"><span>Score <b>' + r.score + '</b> / 100</span><span>Value <b>SAR ' + sar(r.sales) + '</b></span>' +
       '<span>Items <b>' + esc(r.items) + '</b></span></div>' +
       '<ul class="why">' + why.map(function (w) { return '<li><span class="pts">+' + w[0] + '</span><span>' + esc(w[1]) + '</span></li>'; }).join('') + '</ul>' +
       '<div class="timeline" aria-hidden="true">' + bars + '</div>' +
@@ -493,7 +751,23 @@
       }).join('') + '</tbody></table></div>';
   }
 
+  function directDetail(d) {
+    return reviewBar(directKey(d), 'direct', d.store) +
+      '<div class="detail-grid"><span>Qty <b>' + d.qty + '</b></span><span>Over limit <b>' + d.excess + '</b></span>' +
+      '<span>Value <b>SAR ' + sar(d.sales) + '</b></span><span>Time <b>' + t(d.time) + '</b></span></div>' +
+      '<p class="small" style="margin:0">Full invoice: <b>' + esc(d.basket) + '</b></p>';
+  }
+
   $('tableWrap').addEventListener('click', function (e) {
+    var save = e.target.closest('.rv-save');
+    if (save) {
+      var bar = save.closest('.review-bar');
+      save.disabled = true;
+      cloud.saveReview(bar.getAttribute('data-key'), bar.getAttribute('data-kind'), bar.getAttribute('data-store'),
+        bar.querySelector('.rv-status').value, bar.querySelector('.rv-note').value.trim()).then(function () { save.disabled = false; });
+      return;
+    }
+    if (e.target.closest('.review-bar')) return;
     var th = e.target.closest('th[data-k]');
     if (th && th.closest('.inner') === null) {
       var k = th.getAttribute('data-k'), cur = state.sort[state.tab] || DEFAULT_SORT[state.tab];
@@ -554,7 +828,8 @@
     var label = btnExport.querySelector('span'), prev = label.textContent;
     btnExport.classList.add('busy'); btnExport.setAttribute('aria-busy', 'true'); label.textContent = 'Preparing…';
     loadExcelJs().then(function () {
-      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.parsed.reportDate });
+      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.parsed.reportDate,
+        reviews: cloud.on ? state.reviews : null, reviewLabels: REVIEW_LABELS, runKey: runKey, directKey: directKey });
     }).then(function (blob) {
       var d = new Date(state.result.totals.start);
       var day = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
