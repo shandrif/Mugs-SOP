@@ -89,8 +89,37 @@
 
   function lookup(mapping, storeName) {
     if (!mapping || !mapping.branches) return null;
-    return mapping.branches[codeOf(storeName)] || null;
+    var code = codeOf(storeName);
+    return mapping.branches[code] || (mapping.manual && mapping.manual[code]) || null;
   }
 
-  return { parseWorkbook: parseWorkbook, lookup: lookup, codeOf: codeOf };
+  var ABBR = { MKK: 'Makkah', MEC: 'Makkah', JED: 'Jeddah', RIY: 'Riyadh', MED: 'Madinah', DMM: 'Dammam', KBR: 'Khobar' };
+  function mode(list) {
+    var c = {}, best = '', n = 0;
+    list.forEach(function (v) { if (!v) return; c[v] = (c[v] || 0) + 1; if (c[v] > n) { n = c[v]; best = v; } });
+    return best;
+  }
+  // Fill a missing branch from the area manager's other branches (ROM, operations chain)
+  // and the city written in the store name when there is one.
+  function inferBranch(mapping, storeName, am) {
+    var all = Object.keys(mapping.branches).map(function (k) { return mapping.branches[k]; });
+    var mine = all.filter(function (b) { return b.am && b.am.toUpperCase() === am.toUpperCase(); });
+    var cities = {}; all.forEach(function (b) { if (b.city) cities[b.city.toLowerCase()] = b.city; });
+    var lower = clean(storeName).toLowerCase(), city = '';
+    Object.keys(cities).forEach(function (c) { if (!city && lower.indexOf(c) >= 0) city = cities[c]; });
+    if (!city) { var ab = clean(storeName).toUpperCase().match(/\b(MKK|MEC|JED|RIY|MED|DMM|KBR)\b/); if (ab) city = ABBR[ab[1]]; }
+    if (!city) city = mode(mine.map(function (b) { return b.city; }));
+    var inCity = all.filter(function (b) { return b.city === city; });
+    return {
+      code: codeOf(storeName), source: 'manual', name: clean(storeName).replace(/^B\s*0*\d+\s*[-,]?\s*/i, ''),
+      city: city, region: mode(inCity.map(function (b) { return b.region; })) || mode(mine.map(function (b) { return b.region; })),
+      zone: mode(inCity.map(function (b) { return b.zone; })) || mode(mine.map(function (b) { return b.zone; })),
+      subZone: '', type: 'Branch', driveThru: '',
+      am: mine.length ? mine[0].am : am, rom: mode(mine.map(function (b) { return b.rom; })),
+      om: mode(mine.map(function (b) { return b.om; })), doo: mode(mine.map(function (b) { return b.doo; })),
+      coo: mode(mine.map(function (b) { return b.coo; })), opened: ''
+    };
+  }
+
+  return { parseWorkbook: parseWorkbook, lookup: lookup, codeOf: codeOf, inferBranch: inferBranch };
 });

@@ -692,3 +692,16 @@ table.heat td.cell { padding: 4px 2px; text-align: center; }
 .map-box .section-title { font-size: 14px; }
 .map-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .user-chip[hidden] { display: none !important; }
+
+.map-missing { display: grid; gap: 8px; }
+.map-missing .strong-label { font-weight: 700; margin-top: 6px; }
+.miss-row { display: grid; gap: 6px; padding: 10px; border-radius: 10px; background: var(--surface-2); box-shadow: 0 0 0 1px var(--line) inset; }
+.miss-row.done { grid-template-columns: 1fr auto; align-items: center; background: var(--ok-bg); box-shadow: none; }
+.miss-input { display: flex; gap: 6px; }
+.miss-input input { flex: 1; min-width: 0; height: 32px; border-radius: 8px; border: 0; padding: 0 10px; font-size: 13px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line) inset; }
+.miss-input input:focus { outline: none; box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 3px var(--focus); }
+
+.miss-done { display: grid; gap: 8px; }
+.miss-done summary { cursor: pointer; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+.miss-done[open] summary { margin-bottom: 8px; }
+.miss-done .miss-row + .miss-row { margin-top: 8px; }

@@ -281,7 +281,7 @@ async function handleApi(request, env, url) {
   if (p === '/api/mapping' && m === 'PUT') {
     const b = await readJson(request, 2 * 1024 * 1024);
     if (!b || typeof b.branches !== 'object') throw bad('branches is required');
-    const rec = { branches: b.branches, count: num(b.count), mainCount: num(b.mainCount), extraCount: num(b.extraCount),
+    const rec = { branches: b.branches, manual: (b.manual && typeof b.manual === 'object') ? b.manual : {}, count: num(b.count), mainCount: num(b.mainCount), extraCount: num(b.extraCount),
       fileName: str(b.fileName, 200), savedAt: Date.now(), savedBy: user.email };
     await env.FILES.put(MAPPING_KEY, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
     log('info', 'mapping.saved', { count: rec.count, by: user.email });
