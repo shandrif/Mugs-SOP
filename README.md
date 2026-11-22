@@ -56,7 +56,9 @@ The current export has no customer, card or cashier field, so a split run is *li
 
 ## Cloudflare app (team version)
 
-The same site runs on Cloudflare with logins and a shared database: **https://mugs-sop.shelfy-help.workers.dev**
+The same site runs on Cloudflare with logins and a shared database: **https://mugspolicy.hmreport.com** (also reachable at https://mugs-sop.shelfy-help.workers.dev).
+
+`mugspolicy.hmreport.com` is served by a small forwarding Worker (`hmreport-proxy`) in the Cloudflare account that owns `hmreport.com`; it passes every request to the `mugs-sop` Worker unchanged, so sessions and uploads work the same on both addresses (sign-ins are per address).
 
 | Piece | What it does |
 |---|---|
