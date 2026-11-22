@@ -533,46 +533,42 @@
   $('fSearch').addEventListener('input', function () { state.filter.q = this.value; renderTable(); });
 
   /* ---------- export ---------- */
-  $('btnExport').addEventListener('click', function () {
-    var R = state.result, o = R.options, wb = XLSX.utils.book_new();
-    var add = function (name, rows) { XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'none' }]), name); };
-    add('Branches', R.stores.map(function (s) {
-      return { Risk: s.status, Branch: s.store, Invoices: s.invoices, Mugs: s.mugs, 'Net sales SAR': +s.sales.toFixed(2),
-        'Direct violations': s.directLines, 'Mugs over (direct)': s.directExcess, 'Split runs': s.runs, 'High runs': s.runsHigh,
-        'Medium runs': s.runsMedium, 'Mugs in split runs': s.runMugs, 'Mugs over (split)': s.runExcess,
-        '% mugs over limit': +(s.pctOver * 100).toFixed(2), 'Zero-qty lines': s.zero };
-    }));
-    add('Split runs', R.runs.map(function (r, i) {
-      return { 'Run #': i + 1, Risk: r.level, Score: r.score, Branch: r.store, 'Item / colour': r.label, Items: r.items,
-        From: dt(r.start), To: dt(r.end), 'Duration min': +r.durationMin.toFixed(2), Invoices: r.invoices, Mugs: r.mugs,
-        'Over limit': r.excess, 'SAR': +r.sales.toFixed(2), 'x normal pace': +r.burst.toFixed(1),
-        'Same basket %': r.invoices >= 3 ? +(r.identical * 100).toFixed(1) : null, 'Most common basket': r.topBasket };
-    }));
-    var inv = [];
-    R.runs.forEach(function (r, i) {
-      r.detail.forEach(function (d) {
-        inv.push({ 'Run #': i + 1, Risk: r.level, Branch: r.store, 'Item / colour': r.label, Time: dt(d.time),
-          'This item qty': d.qty, 'Invoice qty': d.invoiceQty, 'Invoice SAR': +d.sales.toFixed(2), 'Full invoice': d.basket });
+  // The branded workbook needs ExcelJS (~0.9 MB); load it only when someone exports.
+  var excelJsReady = null;
+  function loadExcelJs() {
+    if (window.ExcelJS) return Promise.resolve();
+    if (!excelJsReady) {
+      excelJsReady = new Promise(function (res, rej) {
+        var s = document.createElement('script');
+        s.src = 'vendor/exceljs.min.js';
+        s.onload = res;
+        s.onerror = function () { excelJsReady = null; rej(new Error('Could not load the Excel library.')); };
+        document.head.appendChild(s);
       });
+    }
+    return excelJsReady;
+  }
+  var btnExport = $('btnExport');
+  btnExport.addEventListener('click', function () {
+    if (!state.result || btnExport.classList.contains('busy')) return;
+    var label = btnExport.querySelector('span'), prev = label.textContent;
+    btnExport.classList.add('busy'); btnExport.setAttribute('aria-busy', 'true'); label.textContent = 'Preparing…';
+    loadExcelJs().then(function () {
+      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.parsed.reportDate });
+    }).then(function (blob) {
+      var d = new Date(state.result.totals.start);
+      var day = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'HM Mugs SOP report ' + day + '.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    }).catch(function (err) {
+      console.error(err);
+      showError('Export failed: ' + err.message);
+    }).then(function () {
+      btnExport.classList.remove('busy'); btnExport.removeAttribute('aria-busy'); label.textContent = prev;
     });
-    add('Split run invoices', inv);
-    add('Direct violations', R.direct.map(function (d) {
-      return { Branch: d.store, 'Item / colour': d.label, Items: d.items, Time: dt(d.time), Qty: d.qty,
-        'Over limit': d.excess, SAR: +d.sales.toFixed(2), 'Full invoice': d.basket };
-    }));
-    add('Zero-qty lines', R.zero.map(function (z) {
-      return { Branch: z.store, Item: z.item, Time: dt(z.time), Qty: z.qty, SAR: z.sales };
-    }));
-    add('Settings', [
-      { Setting: 'Source file', Value: state.fileName },
-      { Setting: 'Report date', Value: state.parsed.reportDate || '' },
-      { Setting: 'Limit per customer', Value: o.limit },
-      { Setting: 'Max gap between invoices (min)', Value: o.gapMinutes },
-      { Setting: 'Min invoices in a run', Value: o.minInvoices },
-      { Setting: 'Grouping', Value: o.groupBy === 'colour' ? 'Same colour across items' : 'Same item / SKU' }
-    ]);
-    var base = state.fileName.replace(/\.[^.]+$/, '');
-    XLSX.writeFile(wb, 'SOP-flags_' + base + '.xlsx');
   });
 
   /* ---------- help ---------- */

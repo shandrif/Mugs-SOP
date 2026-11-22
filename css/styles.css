@@ -614,3 +614,9 @@ body.has-data .drop-again, body.has-data .drop-clear { animation: rise 600ms var
   body.has-data .hero-report > *, body.has-data .drop-again, body.has-data .drop-clear { animation: fade 300ms ease both; }
   .kpi[data-go]:hover { transform: none; }
 }
+
+/* export button while the workbook is being built */
+.btn.busy { opacity: 0.75; cursor: progress; }
+.btn.busy svg { animation: nudge 900ms var(--ease-in-out) infinite; }
+@keyframes nudge { 50% { transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .btn.busy svg { animation: none; } }
