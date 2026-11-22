@@ -15,7 +15,19 @@
 
   /* ---------- helpers ---------- */
   // Until we know whether there is a report to show, keep the upload screen hidden (no flash on refresh).
-  function bootDone() { document.documentElement.classList.remove('booting'); }
+  var bootMsgs = ['Brewing your report…', 'Checking direct violations…', 'Finding split-invoice runs…', 'Lining up your branches…'];
+  var bootTimer = (function () {
+    var el = document.getElementById('bootMsg'), i = 0;
+    if (!el || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return null;
+    return setInterval(function () {
+      el.classList.add('swap');
+      setTimeout(function () { i = (i + 1) % bootMsgs.length; el.textContent = bootMsgs[i]; el.classList.remove('swap'); }, 200);
+    }, 1400);
+  })();
+  function bootDone() {
+    if (bootTimer) { clearInterval(bootTimer); bootTimer = null; }
+    document.documentElement.classList.remove('booting');
+  }
   function esc(s) {
     return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];

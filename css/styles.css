@@ -810,8 +810,57 @@ table.users td.actions .btn { margin: 2px 0; }
 
 /* ---------- first load: no upload-screen flash while the report loads ---------- */
 .boot-loader { display: none; }
-html.booting .boot-loader { display: flex; align-items: center; gap: 12px; grid-column: 1 / -1; color: var(--hm-sand); font-weight: 600; font-size: 15px; min-height: 120px; }
+html.booting .boot-loader {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  grid-column: 1 / -1; min-height: calc(100vh - 230px); min-height: calc(100dvh - 230px); text-align: center; color: var(--hm-sand);
+  animation: fade 400ms var(--ease-out) both;
+}
 html.booting .hero-intro, html.booting .hero-report, html.booting #drop, html.booting main, html.booting .footer { visibility: hidden; }
 html.booting .hero-inner { grid-template-columns: 1fr; }
-.boot-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(233, 220, 192, 0.35); border-top-color: var(--hm-sand); animation: spin 800ms linear infinite; }
-@media (prefers-reduced-motion: reduce) { .boot-spin { animation: none; } }
+html.booting .hero { min-height: 100vh; min-height: 100dvh; }
+
+.boot-mugs { width: min(260px, 70vw); height: auto; overflow: visible; }
+.bm { transform-box: fill-box; transform-origin: 50% 100%; animation: bm-bob 2.4s var(--ease-in-out) infinite; }
+.bm2 { animation-delay: 0.2s; }
+.bm3 { animation-delay: 0.4s; }
+.bm-body { fill: rgba(255, 253, 248, 0.06); stroke-width: 3; stroke-linejoin: round; }
+.bm1 .bm-body { stroke: #d9c7a3; }
+.bm2 .bm-body { stroke: #2f9e74; }
+.bm3 .bm-body { stroke: #e9dcc0; }
+.bm-handle { fill: none; stroke-width: 5; stroke-linecap: round; }
+.bm1 .bm-handle { stroke: #d9c7a3; }
+.bm2 .bm-handle { stroke: #2f9e74; }
+.bm3 .bm-handle { stroke: #e9dcc0; }
+/* coffee fills each mug in turn, with a gentle wave on top */
+.bm-fill { fill: #b8862c; transform: translateY(100%); animation: bm-fill 2.4s var(--ease-in-out) infinite; }
+.bm2 .bm-fill { animation-delay: 0.2s; }
+.bm3 .bm-fill { animation-delay: 0.4s; }
+.bm-steam { fill: none; stroke: rgba(233, 220, 192, 0.6); stroke-width: 3; stroke-linecap: round; opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation: bm-steam 2.4s ease-out infinite; }
+.bm2 .bm-steam { animation-delay: 0.2s; }
+.bm3 .bm-steam { animation-delay: 0.4s; }
+@keyframes bm-fill {
+  0%   { transform: translate(0, 100%); }
+  45%  { transform: translate(-16px, 8%); }
+  70%  { transform: translate(-32px, 8%); }
+  100% { transform: translate(-32px, 100%); }
+}
+@keyframes bm-steam {
+  0%, 40% { opacity: 0; transform: translateY(6px) scaleY(0.8); }
+  60%     { opacity: 0.9; }
+  100%    { opacity: 0; transform: translateY(-14px) scaleY(1.1); }
+}
+@keyframes bm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+.boot-text { display: grid; gap: 4px; }
+.boot-text strong { font-family: var(--font-display); font-weight: 500; font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.01em; color: #f6eedc; min-height: 1.3em; transition: opacity 200ms ease; }
+.boot-text strong.swap { opacity: 0; }
+.boot-sub { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(233, 220, 192, 0.6); }
+.boot-bar { position: relative; width: min(220px, 60vw); height: 3px; border-radius: 3px; background: rgba(233, 220, 192, 0.15); overflow: hidden; }
+.boot-bar i { position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 3px; background: linear-gradient(90deg, transparent, var(--hm-sand), transparent); animation: boot-bar 1.4s var(--ease-in-out) infinite; }
+@keyframes boot-bar { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bm, .bm-steam, .boot-bar i { animation: none; }
+  .bm-fill { animation: none; transform: translateY(30%); }
+  .bm-steam { opacity: 0.5; }
+}
