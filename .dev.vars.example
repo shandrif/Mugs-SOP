@@ -1,3 +1,6 @@
 # Copy to .dev.vars for local development (never commit .dev.vars)
+# AUTH_MODE=dev skips the login and acts as the user below. Remove it to test the real login screens.
 AUTH_MODE=dev
 DEV_USER=dev@halfm.local
+DEV_ROLE=admin
+DEV_AM=

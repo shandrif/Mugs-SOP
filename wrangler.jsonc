@@ -34,11 +34,11 @@
 
   "vars": {
     "RETENTION_DAYS": "90",
-    // "access" verifies the Cloudflare Access login on every API call.
-    // Set ACCESS_TEAM_DOMAIN (e.g. https://halfmillion.cloudflareaccess.com) and ACCESS_AUD after creating the Access app.
-    "AUTH_MODE": "access",
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
+    // "app": accounts are managed in the app (admin / area manager). "dev" is for local testing only (.dev.vars).
+    "AUTH_MODE": "app",
+    // Set at deploy time from the ADMIN_EMAIL GitHub secret (not stored in this public repo).
+    // Signing up with this email creates an active admin. If empty, the very first account becomes the admin.
+    "ADMIN_EMAIL": ""
   },
 
   "observability": {
