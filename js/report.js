@@ -242,13 +242,11 @@
     [1, 7].forEach(function (r) { ws.getRow(r).height = 10; });
     ws.getRow(2).height = 18; ws.getRow(3).height = 36; ws.getRow(4).height = 20; ws.getRow(5).height = 18; ws.getRow(6).height = 18;
     merge('B2:I2', 'HALF MILLION  ·  RETAIL COMPLIANCE', font({ bold: true, size: 9, color: C.sand2 }));
-    merge('B3:I3', 'Mugs SOP report  ·  ' + fmtDate(T.start), font({ serif: true, size: 24, color: 'F6EEDC' }));
-    merge('B4:I4', meta.fileName + '  ·  ' + T.stores + ' branches  ·  ' + stamp(T.start) + ' → ' + stamp(T.end), font({ size: 10, color: C.sand }));
-    merge('B5:I5', 'Rules: max ' + o.limit + ' per ' + (o.groupBy === 'colour' ? 'colour' : 'item/SKU') + ' per customer  ·  invoices ≤ ' + o.gapMinutes +
+    merge('B3:M3', 'Mugs SOP report  ·  ' + fmtDate(T.start), font({ serif: true, size: 24, color: 'F6EEDC' }));
+    merge('B4:M4', meta.fileName + '  ·  ' + T.stores + ' branches  ·  ' + stamp(T.start) + ' → ' + stamp(T.end), font({ size: 10, color: C.sand }));
+    merge('B5:M5', 'Rules: max ' + o.limit + ' per ' + (o.groupBy === 'colour' ? 'colour' : 'item/SKU') + ' per customer  ·  invoices ≤ ' + o.gapMinutes +
       ' min apart form a run  ·  min ' + o.minInvoices + ' invoices per run', font({ size: 10, color: C.sand2 }));
-    // HM monogram block on the right of the band
-    merge('L2:M6', 'HM', font({ serif: true, bold: true, size: 30, color: C.green }), { horizontal: 'center' }, C.sand);
-    merge('J5:K5', 'Generated ' + stamp(Date.now() - new Date().getTimezoneOffset() * 60000), font({ size: 9, color: C.sand2 }), { horizontal: 'right' });
+    merge('J2:M2', 'Generated ' + stamp(Date.now() - new Date().getTimezoneOffset() * 60000), font({ size: 9, color: C.sand2 }), { horizontal: 'right' });
     ws.getRow(8).height = 12;
 
     /* --- KPI tiles: 6 tiles x 2 columns, rows 9-12 --- */
