@@ -1,0 +1,18 @@
+# Files that must NOT be published as static assets
+worker
+migrations
+node_modules
+tests
+.wrangler
+.git
+.github
+.dev.vars
+.dev.vars.*
+.env
+wrangler.jsonc
+package.json
+package-lock.json
+README.md
+*.xlsx
+*.xls
+*.csv
