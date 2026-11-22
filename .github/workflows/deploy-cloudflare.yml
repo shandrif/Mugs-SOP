@@ -40,3 +40,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+
+      - name: Set mapping sync key (Worker secret)
+        if: ${{ env.MAPPING_SYNC_TOKEN != '' }}
+        run: printf '%s' "$MAPPING_SYNC_TOKEN" | npx wrangler secret put MAPPING_SYNC_TOKEN
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MAPPING_SYNC_TOKEN: ${{ secrets.MAPPING_SYNC_TOKEN }}

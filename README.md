@@ -23,6 +23,10 @@ Upload the **Master Location Mapping** workbook (Detection rules panel → *Bran
 - Branch, split-run and direct-violation tables gain City / Area manager / ROM columns (sortable, searchable).
 - The mapping contains staff names, so it is **never committed**: it is kept in the browser (local mode) or in R2 behind the login (cloud mode, `GET/PUT/DELETE /api/mapping`).
 
+### Weekly mapping sync
+
+A scheduled Claude task runs every **Sunday morning (Riyadh)**: it reads `Master_Location_Mapping.xlsx` from SharePoint through the Microsoft 365 connector, parses it with `scripts/sync-mapping.mjs` (same rules as the in-app upload) and sends it to `PUT /api/mapping/sync` with the `MAPPING_SYNC_TOKEN` key. Branches an admin added by hand are kept unless the file now covers them. The key lives in two private places only: the `MAPPING_SYNC_TOKEN` GitHub secret (copied to the Worker at deploy) and the Claude environment variable of the same name.
+
 ## Excel report
 
 **Export report** downloads `HM Mugs SOP report <date>.xlsx`:

@@ -438,6 +438,31 @@ async function getMapping(env, user) {
   return json({ branches: pick(m.branches), manual: pick(m.manual), count: 0, fileName: m.fileName, savedAt: m.savedAt });
 }
 
+async function saveMapping(env, b, savedBy) {
+  if (!b || typeof b.branches !== 'object' || !Object.keys(b.branches).length) throw bad('branches is required');
+  const rec = { branches: b.branches, manual: (b.manual && typeof b.manual === 'object') ? b.manual : {}, count: num(b.count),
+    mainCount: num(b.mainCount), extraCount: num(b.extraCount), fileName: str(b.fileName, 200), savedAt: Date.now(), savedBy };
+  await env.FILES.put(MAPPING_KEY, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
+  log('info', 'mapping.saved', { count: rec.count, by: savedBy });
+  return rec;
+}
+
+async function syncMapping(request, env) {
+  const key = String(env.MAPPING_SYNC_TOKEN || '');
+  const auth = request.headers.get('authorization') || '';
+  const given = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (key.length < 24) throw new HttpError(503, 'Mapping sync is not configured (MAPPING_SYNC_TOKEN)');
+  if (!given || !(await sameSecret(given, key))) throw new HttpError(401, 'Invalid sync key');
+  const b = await readJson(request, 2 * 1024 * 1024);
+  // Keep branches an admin added by hand, unless the new file now covers them.
+  const prevObj = await env.FILES.get(MAPPING_KEY);
+  const prev = prevObj ? await prevObj.json() : null;
+  const manual = {};
+  Object.entries((prev && prev.manual) || {}).forEach(([code, v]) => { if (!b.branches[code]) manual[code] = v; });
+  const rec = await saveMapping(env, { ...b, manual }, 'Weekly SharePoint sync');
+  return json({ ok: true, count: rec.count, keptManual: Object.keys(manual).length, savedAt: rec.savedAt });
+}
+
 /* ------------------------------------------------------------------ router */
 
 async function handleApi(request, env, url) {
@@ -449,6 +474,9 @@ async function handleApi(request, env, url) {
   if (p === '/api/auth/signup' && m === 'POST') return signup(request, env, url);
   if (p === '/api/auth/login' && m === 'POST') return login(request, env, url);
   if (p === '/api/auth/logout' && m === 'POST') return logout(request, env, url);
+
+  // Weekly automation: replaces the mapping with a sync key instead of a login.
+  if (p === '/api/mapping/sync' && m === 'PUT') return syncMapping(request, env);
 
   const user = await currentUser(request, env);
   if (!user) throw new HttpError(401, 'Not signed in', { auth: 'app' });
@@ -474,12 +502,7 @@ async function handleApi(request, env, url) {
   if (p === '/api/mapping' && m === 'GET') return getMapping(env, user);
   if (p === '/api/mapping' && m === 'PUT') {
     needAdmin();
-    const b = await readJson(request, 2 * 1024 * 1024);
-    if (!b || typeof b.branches !== 'object') throw bad('branches is required');
-    const rec = { branches: b.branches, manual: (b.manual && typeof b.manual === 'object') ? b.manual : {}, count: num(b.count),
-      mainCount: num(b.mainCount), extraCount: num(b.extraCount), fileName: str(b.fileName, 200), savedAt: Date.now(), savedBy: user.name || user.email };
-    await env.FILES.put(MAPPING_KEY, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
-    log('info', 'mapping.saved', { count: rec.count, by: user.id });
+    const rec = await saveMapping(env, await readJson(request, 2 * 1024 * 1024), user.name || user.email);
     return json({ ok: true, savedBy: rec.savedBy, savedAt: rec.savedAt });
   }
   if (p === '/api/mapping' && m === 'DELETE') { needAdmin(); await env.FILES.delete(MAPPING_KEY); return json({ ok: true }); }
