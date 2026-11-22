@@ -274,7 +274,7 @@
         totals: {
           mugs: T.mugs, sales: Math.round(T.sales * 100) / 100, invoices: T.invoices, stores: T.stores,
           directLines: T.directLines, directExcess: T.directExcess, runs: T.runs, runsHigh: T.runsHigh,
-          runsMedium: T.runsMedium, zero: T.zero, highStores: R.stores.filter(function (s) { return s.status === 'High'; }).length
+          runsMedium: T.runsMedium, highStores: R.stores.filter(function (s) { return s.status === 'High'; }).length
         },
         stores: R.stores.map(function (s) {
           return { store: s.store, status: s.status, invoices: s.invoices, mugs: s.mugs, sales: Math.round(s.sales * 100) / 100,
@@ -896,7 +896,6 @@
     renderChart(isNewFile);
     $('cntRuns').textContent = n0(T.runs);
     $('cntDirect').textContent = n0(T.directLines);
-    $('cntZero').textContent = n0(T.zero);
     renderTable();
     moveInk();
     if (isNewFile) {
@@ -906,6 +905,7 @@
   }
 
   /* ---------- KPIs: numbers tween from their previous value when results change ---------- */
+  function runExcessTotal(r) { return r.runs.reduce(function (a, x) { return a + x.excess; }, 0); }
   function renderKpis(isNewFile) {
     var T = state.result.totals;
     var highStores = state.result.stores.filter(function (s) { return s.status === 'High'; }).length;
@@ -915,7 +915,7 @@
       { id: 'sr', label: 'Split-invoice runs', value: T.runs, note: T.runsHigh + ' high · ' + T.runsMedium + ' medium · ' + plural(T.runStores, 'branch', 'branches'), cls: 'med', go: 'runs:' },
       { id: 'mu', label: 'Mugs sold', value: T.mugs, note: plural(T.invoices, 'invoice', 'invoices') },
       { id: 'sa', label: 'Net sales', value: T.sales, unit: 'SAR', note: plural(T.lines, 'sale line', 'sale lines') + ' · SAR ' + sar(T.sales) },
-      { id: 'zq', label: 'Zero-qty lines', value: T.zero, note: 'voids or returns to review', go: 'zero:' }
+      { id: 'zq', label: 'Mugs over limit', value: T.directExcess + runExcessTotal(state.result), note: n0(T.directExcess) + ' direct · ' + n0(runExcessTotal(state.result)) + ' in split runs', cls: 'med' }
     ];
     var wrap = $('kpis');
     if (!wrap.children.length) {
@@ -1069,8 +1069,7 @@
       { k: 'runsHigh', h: 'High runs', num: 1 },
       { k: 'runExcess', h: 'Over (split)', num: 1 },
       { k: 'pctOver', h: '% over limit', num: 1, f: function (r) {
-        return pct(r.pctOver) + '<span class="meter' + (r.pctOver >= 0.25 ? ' warn' : '') + '"><i style="width:' + Math.round(Math.min(1, r.pctOver) * 100) + '%"></i></span>'; } },
-      { k: 'zero', h: 'Zero-qty', num: 1 }
+        return pct(r.pctOver) + '<span class="meter' + (r.pctOver >= 0.25 ? ' warn' : '') + '"><i style="width:' + Math.round(Math.min(1, r.pctOver) * 100) + '%"></i></span>'; } }
     ],
     runs: [
       { k: 'level', h: 'Risk', f: function (r) { return badge(r.level); }, sortVal: function (r) { return r.score; } },
@@ -1098,20 +1097,13 @@
       { k: 'sales', h: 'SAR', num: 1, f: function (r) { return sar(r.sales); } },
       { k: 'basket', h: 'Full invoice', cls: 'wrap-cell' },
       { k: 'review', h: 'Review', cloud: 1, f: function (r) { return reviewBadge(directKey(r)); }, sortVal: function (r) { var v = state.reviews[directKey(r)]; return v ? v.status : 'open'; } }
-    ],
-    zero: [
-      { k: 'store', h: 'Branch', cls: 'strong' },
-      { k: 'item', h: 'Item' },
-      { k: 'time', h: 'Time', f: function (r) { return t(r.time); } },
-      { k: 'qty', h: 'Qty', num: 1 },
-      { k: 'sales', h: 'SAR', num: 1, f: function (r) { return sar(r.sales); } }
     ]
   };
-  var DEFAULT_SORT = { stores: null, runs: null, direct: { k: 'qty', dir: -1 }, zero: { k: 'time', dir: 1 } };
+  var DEFAULT_SORT = { stores: null, runs: null, direct: { k: 'qty', dir: -1 } };
 
   function dataFor(tab) {
     var R = state.result, F = state.filter, q = F.q.toLowerCase();
-    var rows = tab === 'stores' ? R.stores : tab === 'runs' ? R.runs : tab === 'direct' ? R.direct : R.zero;
+    var rows = tab === 'stores' ? R.stores : tab === 'runs' ? R.runs : R.direct;
     return rows.filter(function (r) {
       if (F.store && r.store !== F.store) return false;
       if (F.level) {
@@ -1141,7 +1133,7 @@
         return s.dir * (x - y);
       });
     }
-    $('fLevel').disabled = (tab === 'direct' || tab === 'zero');
+    $('fLevel').disabled = (tab === 'direct');
     $('rowCount').textContent = plural(rows.length, 'row', 'rows') +
       (tab === 'stores' ? ' · click a branch to open it' : tab === 'runs' ? ' · click a run for invoice detail' + (cloud.on ? ' and review' : '') :
         tab === 'direct' && cloud.on ? ' · click a row to review it' : '');

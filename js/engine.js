@@ -110,6 +110,7 @@
       var closeMs = toMs(x[col.close]);
       var qty = Number(x[col.qty]);
       if (closeMs === null || !isFinite(qty)) continue; // subtotal / blank rows
+      if (qty <= 0) continue; // zero-quantity lines (voids, comps, returns) are not sales
       if (!cur.store || !cur.item) { warnings.push('Row ' + (i + 1) + ': sale without store/item, skipped'); continue; }
       lines.push({
         row: i + 1,
@@ -137,6 +138,8 @@
 
   /* ---------- 2. Analyse ---------- */
   function analyse(lines, opts) {
+    // Ignore zero-quantity lines, including in data saved before they were dropped at upload.
+    lines = lines.filter(function (l) { return l.qty > 0; });
     var o = {};
     Object.keys(DEFAULTS).forEach(function (k) { o[k] = (opts && opts[k] !== undefined) ? opts[k] : DEFAULTS[k]; });
     var gapMs = o.gapMinutes * 60000;
@@ -246,17 +249,12 @@
     }
     runs.sort(function (a, b) { return b.score - a.score || b.mugs - a.mugs; });
 
-    // Zero-quantity / zero-value lines (voids, comps, returns).
-    var zero = lines.filter(function (l) { return l.qty <= 0; }).map(function (l) {
-      return { store: l.store, item: l.itemEn, time: l.time, qty: l.qty, sales: l.sales };
-    });
-
     // Store league table.
     var stores = {};
     var S = function (name) {
       return stores[name] = stores[name] || {
         store: name, invoices: 0, lines: 0, mugs: 0, sales: 0,
-        directLines: 0, directExcess: 0, runs: 0, runsHigh: 0, runsMedium: 0, runMugs: 0, runExcess: 0, zero: 0, maxScore: 0
+        directLines: 0, directExcess: 0, runs: 0, runsHigh: 0, runsMedium: 0, runMugs: 0, runExcess: 0, maxScore: 0
       };
     };
     invList.forEach(function (inv) { var s = S(inv.store); s.invoices++; s.mugs += inv.qty; s.sales += inv.sales; s.lines += inv.lines.length; });
@@ -266,7 +264,6 @@
       if (r.level === 'High') s.runsHigh++; else if (r.level === 'Medium') s.runsMedium++;
       if (r.score > s.maxScore) s.maxScore = r.score;
     });
-    zero.forEach(function (z) { S(z.store).zero++; });
     var storeList = Object.keys(stores).map(function (k) {
       var s = stores[k];
       s.flaggedExcess = s.directExcess + s.runExcess;
@@ -290,10 +287,10 @@
       runsMedium: runs.filter(function (r) { return r.level === 'Medium'; }).length,
       runMugs: runs.reduce(function (a, r) { return a + r.mugs; }, 0),
       runStores: storeList.filter(function (s) { return s.runs > 0; }).length,
-      zero: zero.length, start: tMin, end: tMax
+      start: tMin, end: tMax
     };
 
-    return { options: o, totals: totals, stores: storeList, direct: direct, runs: runs, zero: zero };
+    return { options: o, totals: totals, stores: storeList, direct: direct, runs: runs };
   }
 
   return { DEFAULTS: DEFAULTS, parseRows: parseRows, analyse: analyse, colourOf: colourOf, toMs: toMs, fmtTime: fmtTime };

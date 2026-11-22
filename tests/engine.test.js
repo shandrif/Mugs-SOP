@@ -14,14 +14,14 @@ rows.push([null, null, null, null, null, null, ts(10, 1, 0), 40, 2]);
 rows.push([null, null, null, null, null, null, ts(10, 1, 30), 40, 2]);
 rows.push([null, null, null, null, null, null, ts(15, 0, 0), 20, 1]);
 rows.push([null, null, null, null, null, ' Total', null, 180, 9]);
-// Store B: two normal sales far apart (no flags) and one zero-qty line.
+// Store B: two normal sales far apart (no flags) and one zero-qty line, which is dropped.
 rows.push(['B Store', '2026-11-18', 'RETAIL', 'B1', 'Beige Mug/كوب بيج', null, ts(8, 0, 0), 40, 2]);
 rows.push([null, null, null, null, null, null, ts(12, 0, 0), 40, 2]);
 rows.push([null, null, null, null, null, null, ts(13, 0, 0), 0, 0]);
 rows.push(['Grand Total', null, null, null, null, null, null, 500, 20]);
 
 const p = E.parseRows(rows);
-assert.strictEqual(p.lines.length, 9);
+assert.strictEqual(p.lines.length, 8); // the 0-qty line is not a sale
 assert.strictEqual(p.reportDate, '11/18/2026');
 assert.strictEqual(E.colourOf('Hot Mug – Beige / كوب ساخن – بيج'), 'Beige');
 
@@ -32,7 +32,9 @@ assert.strictEqual(a.runs.length, 1);
 assert.strictEqual(a.runs[0].store, 'A Store');
 assert.strictEqual(a.runs[0].invoices, 4);
 assert.strictEqual(a.runs[0].mugs, 8);
-assert.strictEqual(a.zero.length, 1);
+assert.strictEqual(a.zero, undefined);
+// Zero-qty lines in older saved data are ignored too.
+assert.strictEqual(E.analyse(p.lines.concat([Object.assign({}, p.lines[0], { qty: 0, sales: 0, time: p.lines[0].time + 1 })])).totals.lines, 8);
 assert.strictEqual(a.stores.find(s => s.store === 'B Store').status, 'Clean');
 assert.strictEqual(a.stores.find(s => s.store === 'A Store').status === 'Clean', false);
 

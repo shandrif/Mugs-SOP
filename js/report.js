@@ -257,7 +257,7 @@
       { label: 'SPLIT-INVOICE RUNS', value: T.runs, note: T.runsHigh + ' high · ' + T.runsMedium + ' medium · ' + T.runStores + ' branches', accent: C.split, labelColor: C.Medium },
       { label: 'MUGS SOLD', value: T.mugs, note: nf0.format(T.invoices) + ' invoices', accent: C.line },
       { label: 'NET SALES (SAR)', value: T.sales, fmt: '#,##0', note: 'SAR ' + T.sales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), accent: C.line },
-      { label: 'ZERO-QTY LINES', value: T.zero, note: 'voids or returns to review', accent: C.line }
+      { label: 'MUGS OVER LIMIT', value: T.directExcess + R.runs.reduce(function (a, r) { return a + r.excess; }, 0), note: 'direct + split-invoice runs', accent: C.line }
     ];
     ws.getRow(9).height = 22; ws.getRow(10).height = 24; ws.getRow(11).height = 24; ws.getRow(12).height = 30;
     tiles.forEach(function (t, i) {
@@ -452,8 +452,7 @@
       { key: 'runsMedium', header: 'Medium runs', width: 10, num: true },
       { key: 'runMugs', header: 'Mugs in split runs', width: 12, num: true },
       { key: 'runExcess', header: 'Mugs over (split)', width: 13, num: true, bar: C.barSplit },
-      { key: 'pctOver', header: '% of mugs over limit', width: 14, num: true, fmt: '0.0%', bar: C.barHigh, barMax: 1 },
-      { key: 'zero', header: 'Zero-qty lines', width: 10, num: true }
+      { key: 'pctOver', header: '% of mugs over limit', width: 14, num: true, fmt: '0.0%', bar: C.barHigh, barMax: 1 }
     ]), R.stores.map(function (st) {
       return Object.assign({}, st, { city: info(st.store, 'city'), zone: info(st.store, 'zone'), am: info(st.store, 'am'), rom: info(st.store, 'rom') });
     }), { freezeCols: 2 });
@@ -518,13 +517,6 @@
         review: review(k), note: reviewNote(k), am: info(d.store, 'am') };
     }), { freezeCols: 1 });
 
-    table(tab('Zero-qty lines', C.muted), [
-      { key: 'store', header: 'Branch', width: 30, bold: true },
-      { key: 'item', header: 'Item', width: 36 },
-      { key: 'time', header: 'Time', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
-      { key: 'qty', header: 'Qty', width: 8, num: true },
-      { key: 'sales', header: 'SAR', width: 10, num: true, fmt: '#,##0.00' }
-    ], R.zero.map(function (z) { return { store: z.store, item: z.item, time: xlDate(z.time), qty: z.qty, sales: z.sales }; }));
 
     var o = R.options;
     table(tab('Settings', C.muted), [
