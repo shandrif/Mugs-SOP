@@ -206,14 +206,22 @@
         .then(function (res) {
           clearTimeout(timer);
           var type = res.headers.get('content-type') || '';
-          if (!res.ok || type.indexOf('application/json') < 0) return false;
+          if (type.indexOf('application/json') < 0) return false;
           return res.json().then(function (me) {
-            if (!me || !me.email) return false;
+            if (res.status === 401 && me && me.auth === 'app') { auth.show(); return 'login'; }
+            if (!res.ok || !me || !me.email) return false;
             cloud.on = true; cloud.me = me;
-            document.body.classList.add('cloud');
+            cloud.admin = me.role === 'admin';
+            document.body.classList.add('cloud', cloud.admin ? 'admin' : 'viewer');
             $('userChip').hidden = false;
-            $('userEmail').textContent = me.email;
+            $('userEmail').textContent = me.name || me.email;
+            $('userRole').textContent = cloud.admin ? 'Admin' : 'Area manager';
             $('retentionDays').textContent = me.retentionDays;
+            if (cloud.admin) users.badge();
+            else {
+              $('viewerName').textContent = me.areaManager || '—';
+              if (!me.areaManager) toast('No area manager is linked to your account yet. Ask an admin.', 'error');
+            }
             return true;
           });
         }).catch(function () { clearTimeout(timer); return false; });
@@ -235,6 +243,7 @@
       }).then(function (out) {
         var data = out[0], reviews = {};
         (out[1].reviews || []).forEach(function (r) { reviews[r.flagKey] = r; });
+        if (!cloud.admin && meta.rules) applyRules(meta.rules);
         useParsed({ lines: data.lines, warnings: [], reportDate: data.reportDate }, meta.fileName, { cloud: meta, reviews: reviews });
         renderHistory();
         toast('Opened ' + longDate(meta.periodStart || Date.parse(meta.reportDate)) + ' from HM cloud');
@@ -243,6 +252,8 @@
     save: function (buf, file, parsed) {
       var R = E.analyse(parsed.lines, readOptions()), T = R.totals, id;
       toast('Saving to HM cloud…', 'busy');
+      var info = function (store, k) { var m = branchInfo(store); return m ? (m[k] || '') : ''; };
+      if (!state.mapping) toast('Saving without a branch mapping: area managers will not see this day until you upload the mapping and re-upload the file.', 'error');
       var body = {
         reportDate: isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength,
         periodStart: T.start, periodEnd: T.end, rules: R.options,
@@ -254,13 +265,16 @@
         stores: R.stores.map(function (s) {
           return { store: s.store, status: s.status, invoices: s.invoices, mugs: s.mugs, sales: Math.round(s.sales * 100) / 100,
             directLines: s.directLines, directExcess: s.directExcess, runs: s.runs, runsHigh: s.runsHigh,
-            runExcess: s.runExcess, pctOver: Math.round(s.pctOver * 10000) / 10000 };
+            runExcess: s.runExcess, pctOver: Math.round(s.pctOver * 10000) / 10000,
+            am: info(s.store, 'am'), rom: info(s.store, 'rom'), city: info(s.store, 'city'), zone: info(s.store, 'zone') };
         })
       };
+      var byAm = {};
       var lines = parsed.lines.map(function (l) {
         return { row: l.row, store: l.store, code: l.code, item: l.item, itemEn: l.itemEn, colour: l.colour, time: l.time,
           sales: l.sales, qty: l.qty, invoice: l.invoice, cashier: l.cashier, customer: l.customer };
       });
+      lines.forEach(function (l) { var am = info(l.store, 'am'); if (am) (byAm[am] = byAm[am] || []).push(l); });
       return api('/api/reports', { method: 'POST', json: body }).then(function (d) {
         id = d.id;
         return Promise.all([
@@ -268,7 +282,12 @@
           gzip(JSON.stringify({ v: 1, reportDate: parsed.reportDate, lines: lines })).then(function (gz) {
             return api('/api/reports/' + id + '/lines', { method: 'PUT', body: gz, type: 'application/gzip' });
           })
-        ]);
+        ].concat(Object.keys(byAm).map(function (am) {
+          // Each area manager gets a file with only their branches; the server serves it by login.
+          return gzip(JSON.stringify({ v: 1, reportDate: parsed.reportDate, lines: byAm[am] })).then(function (gz) {
+            return api('/api/reports/' + id + '/lines?am=' + encodeURIComponent(am), { method: 'PUT', body: gz, type: 'application/gzip' });
+          });
+        })));
       }).then(function () {
         return api('/api/reports/' + id + '/complete', { method: 'POST' });
       }).then(function (res) {
@@ -309,6 +328,12 @@
   function reviewBar(key, kind, store) {
     if (!cloud.on) return '';
     var r = (state.reviews && state.reviews[key]) || {};
+    if (!cloud.admin) {
+      return '<div class="review-bar"><span class="rv-title">Review</span>' + reviewBadge(key) +
+        (r.note ? '<span class="small">' + esc(r.note) + '</span>' : '') +
+        (r.reviewedBy ? '<span class="rv-meta">By ' + esc(r.reviewedBy) + ' · ' +
+          new Date(r.reviewedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</span>' : '') + '</div>';
+    }
     var opts = Object.keys(REVIEW_LABELS).map(function (k) {
       return '<option value="' + k + '"' + ((r.status || 'open') === k ? ' selected' : '') + '>' + REVIEW_LABELS[k] + '</option>';
     }).join('');
@@ -337,8 +362,8 @@
         '<td class="num">' + n0(T.runs || 0) + '</td><td class="num">' + n0(T.mugs || 0) + '</td>' +
         '<td class="actions">' +
           (r.id === cur ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-act="open" data-id="' + r.id + '">Open</button>') +
-          '<a class="btn btn-ghost btn-sm" href="/api/reports/' + r.id + '/file">Original</a>' +
-          '<button type="button" class="btn btn-ghost btn-sm danger" data-act="delete" data-id="' + r.id + '">Delete</button>' +
+          (cloud.admin ? '<a class="btn btn-ghost btn-sm" href="/api/reports/' + r.id + '/file">Original</a>' +
+          '<button type="button" class="btn btn-ghost btn-sm danger" data-act="delete" data-id="' + r.id + '">Delete</button>' : '') +
         '</td></tr>';
     }).join('');
   }
@@ -354,8 +379,11 @@
     if (!cloud.on) return;
     var days = parseInt($('trendDays').value, 10) || 30;
     api('/api/trends?days=' + days).then(function (d) {
+      state.trend = d;
+      renderDaily();
       var dates = d.dates || [], by = {};
-      d.rows.forEach(function (r) {
+      var rowsIn = d.rows.filter(trendInScope);
+      rowsIn.forEach(function (r) {
         var s = by[r.store] = by[r.store] || { store: r.store, days: {}, high: 0, med: 0, excess: 0, last: '' };
         s.days[r.report_date] = r.status;
         if (r.status === 'High') { s.high++; s.last = r.report_date > s.last ? r.report_date : s.last; }
@@ -389,6 +417,7 @@
 
   // Start: cloud if available (open the latest day), otherwise restore from this browser.
   cloud.init().then(function (on) {
+    if (on === 'login') return;
     var mapReady = on
       ? api('/api/mapping').then(function (m) { if (m && m.branches) { state.mapping = m; renderMapStatus(); } }).catch(function () {})
       : store.getKey('mapping').then(function (m) { if (m && m.branches) { state.mapping = m; renderMapStatus(); if (state.parsed) run(false); } });
@@ -397,6 +426,7 @@
       cloud.refresh().then(function (list) {
         renderTrends();
         if (list.length && !state.parsed) cloud.open(list[0].id);
+        else if (!list.length && !cloud.admin) { $('empty').hidden = true; $('viewerEmpty').hidden = false; }
       }).catch(function (err) { toast('Could not load reports: ' + err.message, 'error'); });
       return;
     }
@@ -562,6 +592,214 @@
   });
   renderMapStatus();
 
+  /* ---------- accounts: sign in / create account ---------- */
+  var auth = {
+    show: function (tab) {
+      document.body.classList.add('auth-open');
+      $('authScreen').hidden = false;
+      auth.tab(tab || 'login');
+    },
+    tab: function (t) {
+      ['login', 'signup'].forEach(function (k) {
+        $(k + 'Form').hidden = k !== t;
+        $('authTab_' + k).classList.toggle('active', k === t);
+        $('authTab_' + k).setAttribute('aria-selected', k === t);
+      });
+      auth.msg('');
+      var first = $(t + 'Form').querySelector('input');
+      if (first) setTimeout(function () { first.focus(); }, 50);
+    },
+    msg: function (text, kind) { var el = $('authMsg'); el.textContent = text; el.className = 'auth-msg' + (kind ? ' ' + kind : ''); el.hidden = !text; }
+  };
+  ['login', 'signup'].forEach(function (k) { $('authTab_' + k).addEventListener('click', function () { auth.tab(k); }); });
+  function formBusy(form, busy) { Array.prototype.forEach.call(form.querySelectorAll('button, input'), function (el) { el.disabled = busy; }); }
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = this; formBusy(f, true); auth.msg('Signing in…');
+    api('/api/auth/login', { method: 'POST', json: { email: f.email.value, password: f.password.value } })
+      .then(function () { location.reload(); })
+      .catch(function (err) { formBusy(f, false); auth.msg(err.message, 'error'); });
+  });
+  $('signupForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = this;
+    if (f.password.value !== f.password2.value) { auth.msg('The two passwords do not match', 'error'); return; }
+    formBusy(f, true); auth.msg('Creating your account…');
+    api('/api/auth/signup', { method: 'POST', json: { name: f.name.value, email: f.email.value, password: f.password.value } })
+      .then(function (r) {
+        if (r.status === 'active') { location.reload(); return; }
+        formBusy(f, false); f.reset();
+        auth.tab('login');
+        auth.msg('Account created. An admin will approve it and link it to your area. You can sign in after that.', 'ok');
+      })
+      .catch(function (err) { formBusy(f, false); auth.msg(err.message, 'error'); });
+  });
+
+  /* ---------- my account: change password, sign out ---------- */
+  $('userChip').addEventListener('click', function () {
+    if (!cloud.me) return;
+    $('acctName').textContent = cloud.me.name || '';
+    $('acctEmail').textContent = cloud.me.email;
+    $('acctRole').textContent = cloud.admin ? 'Admin' : 'Area manager · ' + (cloud.me.areaManager || 'not linked yet');
+    $('pwForm').reset(); $('pwMsg').hidden = true;
+    $('accountDlg').showModal();
+  });
+  $('pwForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = this, msg = $('pwMsg');
+    api('/api/me/password', { method: 'POST', json: { current: f.current.value, password: f.password.value } })
+      .then(function () { f.reset(); msg.textContent = 'Password changed.'; msg.className = 'auth-msg ok'; msg.hidden = false; })
+      .catch(function (err) { msg.textContent = err.message; msg.className = 'auth-msg error'; msg.hidden = false; });
+  });
+  $('btnSignOut').addEventListener('click', function () {
+    api('/api/auth/logout', { method: 'POST' }).then(function () { location.reload(); }, function () { location.reload(); });
+  });
+
+  /* ---------- admin: manage users ---------- */
+  var users = {
+    list: [],
+    load: function () {
+      return api('/api/users').then(function (d) { users.list = d.users || []; users.render(); users.badge(true); });
+    },
+    badge: function (skipLoad) {
+      if (!skipLoad) return users.load();
+      var n = users.list.filter(function (u) { return u.status === 'pending'; }).length;
+      $('usersBadge').textContent = n; $('usersBadge').hidden = !n;
+    },
+    amNames: function () {
+      var set = {};
+      if (state.mapping) [state.mapping.branches, state.mapping.manual].forEach(function (src) {
+        Object.keys(src || {}).forEach(function (k) { if (src[k].am) set[src[k].am] = 1; });
+      });
+      users.list.forEach(function (u) { if (u.areaManager) set[u.areaManager] = 1; });
+      return Object.keys(set).sort();
+    },
+    render: function () {
+      var dl = '<datalist id="userAmList">' + users.amNames().map(function (a) { return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>';
+      var pending = users.list.filter(function (u) { return u.status === 'pending'; }).length;
+      $('usersNote').textContent = plural(users.list.length, 'account', 'accounts') + (pending ? ' · ' + pending + ' waiting for approval' : '');
+      $('usersBody').innerHTML = dl + users.list.map(function (u) {
+        var me = cloud.me && u.id === cloud.me.id;
+        return '<tr data-id="' + u.id + '" class="' + (u.status === 'pending' ? 'pending' : '') + '">' +
+          '<td><input class="u-name" value="' + esc(u.name) + '" aria-label="Name"><div class="muted small">' + esc(u.email) + '</div></td>' +
+          '<td><select class="u-role" aria-label="Role"' + (me ? ' disabled' : '') + '><option value="viewer"' + (u.role === 'viewer' ? ' selected' : '') + '>Area manager</option>' +
+            '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') + '>Admin</option></select></td>' +
+          '<td><input class="u-am" list="userAmList" value="' + esc(u.areaManager) + '" placeholder="Pick area manager" aria-label="Area manager"></td>' +
+          '<td><select class="u-status" aria-label="Status"' + (me ? ' disabled' : '') + '>' +
+            ['pending', 'active', 'disabled'].map(function (s) { return '<option value="' + s + '"' + (u.status === s ? ' selected' : '') + '>' + s[0].toUpperCase() + s.slice(1) + '</option>'; }).join('') +
+          '</select></td>' +
+          '<td class="small muted">' + (u.lastLogin ? new Date(u.lastLogin).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never') + '</td>' +
+          '<td class="actions">' +
+            (u.status === 'pending' ? '<button type="button" class="btn btn-primary btn-sm" data-u="approve">Approve</button>' : '<button type="button" class="btn btn-primary btn-sm" data-u="save">Save</button>') +
+            '<button type="button" class="btn btn-ghost btn-sm" data-u="reset">Reset password</button>' +
+            (me ? '' : '<button type="button" class="btn btn-ghost btn-sm danger" data-u="delete">Delete</button>') +
+          '</td></tr>';
+      }).join('');
+    },
+    patch: function (id, body, okMsg) {
+      return api('/api/users/' + id, { method: 'PATCH', json: body })
+        .then(function () { toast(okMsg || 'Saved'); return users.load(); })
+        .catch(function (err) { toast(err.message, 'error'); });
+    }
+  };
+  $('btnUsers').addEventListener('click', function () { users.load(); $('usersDlg').showModal(); });
+  $('usersBody').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-u]');
+    if (!b) return;
+    var tr = b.closest('tr'), id = tr.getAttribute('data-id'), act = b.getAttribute('data-u');
+    var body = { name: tr.querySelector('.u-name').value, role: tr.querySelector('.u-role').value,
+      areaManager: tr.querySelector('.u-am').value, status: tr.querySelector('.u-status').value };
+    if (act === 'approve') { body.status = 'active'; users.patch(id, body, 'Account approved'); }
+    else if (act === 'save') users.patch(id, body, 'Account updated');
+    else if (act === 'reset') {
+      var pw = window.prompt('New temporary password for this person (at least 8 characters). Share it with them privately; they can change it after signing in.');
+      if (pw) users.patch(id, { password: pw }, 'Password reset');
+    } else if (act === 'delete' && window.confirm('Delete this account? They will no longer be able to sign in.')) {
+      api('/api/users/' + id, { method: 'DELETE' }).then(function () { toast('Account deleted'); users.load(); }).catch(function (err) { toast(err.message, 'error'); });
+    }
+  });
+
+  /* ---------- rules stored with a report (area managers see the admin's rules) ---------- */
+  function applyRules(r) {
+    if (r.limit) $('optLimit').value = r.limit;
+    if (r.gapMinutes) $('optGap').value = r.gapMinutes;
+    if (r.minInvoices) $('optMinInv').value = r.minInvoices;
+    if (r.groupBy) $('optGroup').value = r.groupBy;
+    $('hdrLimit').textContent = r.limit || 2;
+  }
+
+  /* ---------- admin: leaderboard by area manager / ROM / city / zone ---------- */
+  var GROUPS = { am: 'Area manager', rom: 'ROM', city: 'City', zone: 'Zone' };
+  function renderLeaderboard() {
+    var panel = $('leaderPanel');
+    var show = !!(state.mapping && state.fullResult && (!cloud.on || cloud.admin));
+    panel.hidden = !show;
+    if (!show) return;
+    var key = $('groupBy').value, groups = {};
+    state.fullResult.stores.forEach(function (s) {
+      var m = branchInfo(s.store), name = m ? (m[key] || '—') : 'Not in mapping';
+      var g = groups[name] = groups[name] || { name: name, branches: 0, high: 0, direct: 0, directExcess: 0, runs: 0, runsHigh: 0, runExcess: 0, mugs: 0 };
+      g.branches++; if (s.status === 'High') g.high++;
+      g.direct += s.directLines; g.directExcess += s.directExcess; g.runs += s.runs; g.runsHigh += s.runsHigh; g.runExcess += s.runExcess; g.mugs += s.mugs;
+    });
+    var rows = Object.keys(groups).map(function (k) { return groups[k]; })
+      .sort(function (a, b) { return (b.directExcess + b.runExcess) - (a.directExcess + a.runExcess) || b.direct - a.direct; });
+    var maxD = Math.max.apply(null, rows.map(function (r) { return r.direct; }).concat([1]));
+    var maxR = Math.max.apply(null, rows.map(function (r) { return r.runs; }).concat([1]));
+    $('leaderHead').textContent = GROUPS[key];
+    $('leaderBody').innerHTML = rows.map(function (r) {
+      var active = state.scope[key] === r.name;
+      var clickable = r.name !== 'Not in mapping' && r.name !== '—';
+      return '<tr class="' + (clickable ? 'clickable' : '') + (active ? ' current' : '') + '" data-g="' + esc(r.name) + '">' +
+        '<td class="strong">' + esc(r.name) + (active ? ' <span class="pill">viewing</span>' : '') + '</td>' +
+        '<td class="num">' + r.branches + '</td><td class="num">' + (r.high ? '<span class="badge High">' + r.high + '</span>' : '0') + '</td>' +
+        '<td class="num bar-cell"><span class="mini"><i class="d" style="width:' + Math.round(r.direct / maxD * 100) + '%"></i></span><b>' + n0(r.direct) + '</b></td>' +
+        '<td class="num">' + n0(r.directExcess) + '</td>' +
+        '<td class="num bar-cell"><span class="mini"><i class="s" style="width:' + Math.round(r.runs / maxR * 100) + '%"></i></span><b>' + n0(r.runs) + '</b></td>' +
+        '<td class="num">' + n0(r.runsHigh) + '</td><td class="num">' + n0(r.runExcess) + '</td>' +
+        '<td class="num">' + pct(r.mugs ? (r.directExcess + r.runExcess) / r.mugs : 0) + '</td></tr>';
+    }).join('');
+  }
+  $('groupBy').addEventListener('change', renderLeaderboard);
+  $('leaderBody').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr.clickable');
+    if (!tr) return;
+    var key = $('groupBy').value, name = tr.getAttribute('data-g');
+    state.scope = { am: '', rom: '', city: '', zone: '' };
+    state.scope[key] = state.scope[key] === name ? '' : name;
+    state.filter.store = ''; state.open = {};
+    run(false);
+    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+  });
+
+  /* ---------- daily trend: direct violations and split runs per day ---------- */
+  function trendInScope(r) {
+    if (!scopeActive()) return true;
+    return SCOPE_FIELDS.every(function (f) { return !state.scope[f[0]] || r[f[0]] === state.scope[f[0]]; });
+  }
+  function renderDaily() {
+    var panel = $('dailyPanel'), d = state.trend;
+    panel.hidden = !(cloud.on && d && d.dates && d.dates.length);
+    if (panel.hidden) return;
+    var per = {};
+    d.dates.forEach(function (x) { per[x] = { direct: 0, runs: 0, dEx: 0, rEx: 0 }; });
+    d.rows.filter(trendInScope).forEach(function (r) {
+      var p = per[r.report_date]; if (!p) return;
+      p.direct += r.direct_lines || 0; p.runs += r.runs || 0; p.dEx += r.direct_excess || 0; p.rEx += r.run_excess || 0;
+    });
+    var max = Math.max.apply(null, d.dates.map(function (x) { return Math.max(per[x].direct, per[x].runs); }).concat([1]));
+    var tot = d.dates.reduce(function (a, x) { a.d += per[x].direct; a.r += per[x].runs; return a; }, { d: 0, r: 0 });
+    $('dailyNote').textContent = plural(d.dates.length, 'day', 'days') + (scopeLabel() ? ' · ' + scopeLabel() : '') +
+      ' · ' + n0(tot.d) + ' direct violations · ' + n0(tot.r) + ' split runs';
+    var short = function (iso) { var p = iso.split('-'); return +p[2] + '/' + +p[1]; };
+    $('dailyChart').innerHTML = d.dates.map(function (x) {
+      var p = per[x];
+      return '<div class="day-col" title="' + esc(longDate(Date.parse(x + 'T00:00:00Z')) + ': ' + p.direct + ' direct violations (' + p.dEx + ' mugs over), ' + p.runs + ' split runs (' + p.rEx + ' mugs over)') + '">' +
+        '<div class="day-bars"><i class="d" style="height:' + (p.direct / max * 100).toFixed(1) + '%"></i><i class="s" style="height:' + (p.runs / max * 100).toFixed(1) + '%"></i></div>' +
+        '<span class="day-lbl">' + short(x) + '</span></div>';
+    }).join('');
+  }
+
   /* ---------- settings ---------- */
   function readOptions() {
     var lim = parseInt($('optLimit').value, 10), gap = parseFloat($('optGap').value), mi = parseInt($('optMinInv').value, 10);
@@ -599,6 +837,7 @@
       else { state.scope = { am: '', rom: '', city: '', zone: '' }; toast('No branches in this file match that view, showing all branches', 'error'); }
     }
     var res = E.analyse(lines, readOptions());
+    state.fullResult = lines === state.parsed.lines ? res : E.analyse(state.parsed.lines, readOptions());
     res.stores.forEach(function (s) {
       var m = branchInfo(s.store);
       s.city = m ? m.city : ''; s.zone = m ? m.zone : ''; s.am = m ? m.am : ''; s.rom = m ? m.rom : ''; s.om = m ? m.om : '';
@@ -607,6 +846,12 @@
     state.result = res;
     renderScope();
     renderMissing();
+    renderLeaderboard();
+    renderDaily();
+    if (cloud.on && !isNewFile) renderTrends();
+    if (cloud.on && !cloud.admin) {
+      $('viewerBranches').textContent = plural(res.stores.length, 'branch', 'branches');
+    }
     var T = res.totals;
     document.body.classList.add('has-data');
     $('empty').hidden = true;
