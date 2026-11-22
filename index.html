@@ -28,6 +28,7 @@
         </span>
       </a>
       <div class="nav-actions">
+        <span class="user-chip" id="userChip" hidden title="Signed in"><i class="dot-live" aria-hidden="true"></i><span id="userEmail"></span></span>
         <button id="btnTheme" class="icon-btn" type="button" aria-label="Toggle dark mode">
           <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
           <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
@@ -72,6 +73,9 @@
         </div>
         <button type="button" class="btn btn-on-dark drop-again" id="btnAgain">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0-4 4m4-4 4 4M5 19h14"/></svg>Load another day
+        </button>
+        <button type="button" class="btn btn-on-dark drop-original" id="btnOriginal" hidden title="Download the uploaded Excel file">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>Original file
         </button>
         <button type="button" class="btn btn-on-dark drop-clear" id="btnClear" title="Remove the saved report from this browser">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>Clear
@@ -152,6 +156,42 @@
         </div>
         <div id="tableWrap" class="table-wrap"></div>
       </section>
+
+      <section class="panel cloud-only reveal" id="trendsPanel" aria-labelledby="trendsTitle">
+        <div class="panel-head">
+          <div>
+            <h2 class="section-title" id="trendsTitle">Repeat offenders</h2>
+            <p class="muted small" id="trendNote">Loading history…</p>
+          </div>
+          <div class="trend-tools">
+            <div class="legend" aria-hidden="true">
+              <span><i class="hc hc-High"></i>High</span><span><i class="hc hc-Medium"></i>Medium</span>
+              <span><i class="hc hc-Low"></i>Low</span><span><i class="hc hc-Clean"></i>Clean</span><span><i class="hc hc-none"></i>No data</span>
+            </div>
+            <select id="trendDays" aria-label="Period">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </div>
+        </div>
+        <div id="trendWrap" class="table-wrap heat-wrap"></div>
+      </section>
+
+      <section class="panel cloud-only reveal" id="historyPanel" aria-labelledby="historyTitle">
+        <div class="panel-head">
+          <div>
+            <h2 class="section-title" id="historyTitle">Report history</h2>
+            <p class="muted small">Every uploaded day, shared with your team. Reports older than <b id="retentionDays">90</b> days are removed automatically. Uploading the same day again replaces it.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Day</th><th>File</th><th>Uploaded by</th><th class="num">High-risk</th><th class="num">Direct</th><th class="num">Split runs</th><th class="num">Mugs</th><th></th></tr></thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </section>
     </div>
 
     <div id="empty" class="landing">
@@ -204,6 +244,7 @@
   </footer>
 
   <div id="tip" class="tip" role="tooltip" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <dialog id="help">
     <form method="dialog">

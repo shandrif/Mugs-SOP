@@ -26,7 +26,8 @@ The account also contains unrelated resources (`hm-mixes-db`, `hm-mixes-order`, 
 - `.assetsignore`: keeps worker/, migrations/, tests/, config, node_modules, README and any xlsx/csv out of the public assets.
 - `migrations/0001_init.sql`: tables `reports`, `store_daily`, `reviews` (see file).
 - `package.json` with Wrangler 4 (`npm install` first). `.dev.vars.example` for local dev (`AUTH_MODE=dev`).
-- **Not written yet:** `worker/index.js` and the front-end cloud features.
+- `worker/index.js` (API, Access JWT check, retention cron) and the front-end cloud mode are **written and tested locally** (wrangler dev, full browser flow).
+- Deploy runs from GitHub Actions on push to `main` (`.github/workflows/deploy-cloudflare.yml`) using the repository secret `CLOUDFLARE_API_TOKEN` (added by the owner). The token is NOT in the Claude environment of the original session.
 
 ## Design decisions (agreed)
 

@@ -42,6 +42,31 @@ All thresholds (limit, gap, min invoices, “same colour” = same SKU or same c
 
 The current export has no customer, card or cashier field, so a split run is *likely*, not proven. Phase 2 needs the POS to export: invoice number, cashier ID, payment method, card token / masked card + terminal, customer mobile/loyalty ID, and voids/returns. With these the same rules can link invoices to one payer and separate genuine family purchases from splits.
 
+## Cloudflare app (team version)
+
+The same site also runs on Cloudflare with a shared database, so every upload is saved and visible to the team:
+
+| Piece | What it does |
+|---|---|
+| Worker `mugs-sop` (`worker/index.js`) | Serves the site and the `/api/*` endpoints |
+| D1 database `mugs-sop` (`migrations/`) | Reports, per-branch daily summary, review decisions |
+| R2 bucket `mugs-sop-files` | Original uploaded files and parsed sale lines |
+| Cloudflare Access | Staff login (email one-time code); the Worker also verifies the login token on every API call |
+| Daily cron | Deletes reports older than `RETENTION_DAYS` (90) |
+
+In cloud mode the page saves each upload automatically, opens the latest day on load, and adds **Repeat offenders** (risk calendar across days), **Report history** (open, download original, delete) and **review status** on split runs and direct violations (Open / Genuine / Violation / False positive, with a note and who saved it). The Excel export includes the review columns. On GitHub Pages, or until the login is configured, the page stays in local-only mode.
+
+**Deploy:** every push to `main` runs `.github/workflows/deploy-cloudflare.yml` (tests → D1 migrations → `wrangler deploy`) using the `CLOUDFLARE_API_TOKEN` repository secret.
+
+**Local development:**
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars
+npm run db:migrate:local
+npx wrangler dev
+```
+
 ## Design
 
 Half Million theme (deep green, sand and gold) with light and dark mode. Brand colours are CSS variables at the top of `css/styles.css` (`--hm-*`); replace them with the official HM brand codes if they differ. Chart colours were checked for colour-blind separation in both themes.
