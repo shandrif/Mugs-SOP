@@ -13,6 +13,7 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;   // original Excel upload
 const MAX_LINES_BYTES = 20 * 1024 * 1024;  // gzipped JSON of sale lines
 const REVIEW_STATUSES = ['open', 'genuine', 'violation', 'false_positive'];
 const RISK = ['High', 'Medium', 'Low', 'Clean'];
+const MAPPING_KEY = 'mapping/current.json';   // branch → city / zone / area manager / ROM
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -272,6 +273,21 @@ async function handleApi(request, env, url) {
   if (p === '/api/reports' && m === 'POST') return createReport(request, env, user);
   if (p === '/api/trends' && m === 'GET') return trends(env, url);
   if (p === '/api/reviews' && m === 'PUT') return saveReview(request, env, user);
+  if (p === '/api/mapping' && m === 'GET') {
+    const obj = await env.FILES.get(MAPPING_KEY);
+    if (!obj) return json(null);
+    return new Response(obj.body, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+  }
+  if (p === '/api/mapping' && m === 'PUT') {
+    const b = await readJson(request, 2 * 1024 * 1024);
+    if (!b || typeof b.branches !== 'object') throw bad('branches is required');
+    const rec = { branches: b.branches, count: num(b.count), mainCount: num(b.mainCount), extraCount: num(b.extraCount),
+      fileName: str(b.fileName, 200), savedAt: Date.now(), savedBy: user.email };
+    await env.FILES.put(MAPPING_KEY, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
+    log('info', 'mapping.saved', { count: rec.count, by: user.email });
+    return json({ ok: true, savedBy: user.email, savedAt: rec.savedAt });
+  }
+  if (p === '/api/mapping' && m === 'DELETE') { await env.FILES.delete(MAPPING_KEY); return json({ ok: true }); }
 
   if ((mm = p.match(/^\/api\/reports\/([0-9a-f-]{36})(?:\/(file|lines|complete|reviews))?$/))) {
     const [, id, sub] = mm;

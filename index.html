@@ -89,6 +89,16 @@
 
     <div id="results" hidden>
 
+      <section class="scope-bar" id="scopeBar" hidden aria-label="View by area manager, ROM, city or zone">
+        <span class="scope-title">View</span>
+        <select id="scope_am" aria-label="Area manager"></select>
+        <select id="scope_rom" aria-label="ROM"></select>
+        <select id="scope_city" aria-label="City"></select>
+        <select id="scope_zone" aria-label="Zone"></select>
+        <button type="button" class="btn btn-ghost btn-sm" id="scopeReset" hidden>Show all</button>
+        <span class="muted small" id="scopeNote"></span>
+      </section>
+
       <section class="kpis" id="kpis" aria-label="Summary"></section>
 
 
@@ -129,6 +139,15 @@
           </label>
         </div>
         <p class="rules-note">Rules are saved in this browser and apply to every file you load.</p>
+        <div class="map-box">
+          <h3 class="section-title">Branch mapping</h3>
+          <p class="small" id="mapStatus"></p>
+          <input id="mapFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+          <div class="map-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="btnMap">Upload mapping</button>
+            <button type="button" class="btn btn-ghost btn-sm danger" id="btnMapClear" hidden>Remove</button>
+          </div>
+        </div>
       </aside>
       </div>
 
@@ -271,6 +290,7 @@
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="js/engine.js"></script>
+  <script src="js/mapping.js"></script>
   <script src="js/report.js"></script>
   <script src="js/app.js"></script>
 </body>
