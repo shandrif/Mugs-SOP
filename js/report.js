@@ -245,7 +245,7 @@
     merge('B3:M3', 'Mugs SOP report  ·  ' + fmtDate(T.start), font({ serif: true, size: 24, color: 'F6EEDC' }));
     merge('B4:M4', meta.fileName + '  ·  ' + T.stores + ' branches  ·  ' + stamp(T.start) + ' → ' + stamp(T.end), font({ size: 10, color: C.sand }));
     merge('B5:M5', 'Rules: max ' + o.limit + ' per ' + (o.groupBy === 'colour' ? 'colour' : 'item/SKU') + ' per customer  ·  invoices ≤ ' + o.gapMinutes +
-      ' min apart form a run  ·  min ' + o.minInvoices + ' invoices per run', font({ size: 10, color: C.sand2 }));
+      ' min apart form a run  ·  min ' + o.minInvoices + ' invoices per run' + (meta.scopeLabel ? '   |   View: ' + meta.scopeLabel : ''), font({ size: 10, color: C.sand2 }));
     merge('J2:M2', 'Generated ' + stamp(Date.now() - new Date().getTimezoneOffset() * 60000), font({ size: 9, color: C.sand2 }), { horizontal: 'right' });
     ws.getRow(8).height = 12;
 
@@ -427,6 +427,9 @@
     var rv = meta.reviews || null, rvLabels = meta.reviewLabels || {};
     var review = function (key) { var x = rv && rv[key]; return x ? (rvLabels[x.status] || x.status) : 'Not reviewed'; };
     var reviewNote = function (key) { var x = rv && rv[key]; return x ? (x.note || '') + (x.reviewedBy ? ' (' + x.reviewedBy + ')' : '') : ''; };
+    var bi = meta.branchInfo || null;
+    var info = function (store, k) { var m = bi && bi(store); return m ? (m[k] || '') : (bi ? 'Not in mapping' : ''); };
+    var amCols = bi ? [{ key: 'am', header: 'Area manager', width: 22 }] : [];
     var reviewCols = rv ? [{ key: 'review', header: 'Review', width: 18 }, { key: 'note', header: 'Review note', width: 40, wrap: true }] : [];
 
     var tab = function (name, color) { return wb.addWorksheet(name, { properties: { tabColor: { argb: A(color) } } }); };
@@ -434,7 +437,11 @@
 
     table(tab('Branches', C.gold), [
       { key: 'status', header: 'Risk', width: 10, badge: true, center: true },
-      { key: 'store', header: 'Branch', width: 34, bold: true },
+      { key: 'store', header: 'Branch', width: 34, bold: true }
+    ].concat(bi ? [
+      { key: 'city', header: 'City', width: 14 }, { key: 'zone', header: 'Zone', width: 20 },
+      { key: 'am', header: 'Area manager', width: 22 }, { key: 'rom', header: 'ROM', width: 22 }
+    ] : []).concat([
       { key: 'invoices', header: 'Invoices', width: 10, num: true, fmt: '#,##0' },
       { key: 'mugs', header: 'Mugs', width: 9, num: true, fmt: '#,##0' },
       { key: 'sales', header: 'Net sales SAR', width: 14, num: true, fmt: '#,##0.00' },
@@ -447,13 +454,16 @@
       { key: 'runExcess', header: 'Mugs over (split)', width: 13, num: true, bar: C.barSplit },
       { key: 'pctOver', header: '% of mugs over limit', width: 14, num: true, fmt: '0.0%', bar: C.barHigh, barMax: 1 },
       { key: 'zero', header: 'Zero-qty lines', width: 10, num: true }
-    ], R.stores, { freezeCols: 2 });
+    ]), R.stores.map(function (st) {
+      return Object.assign({}, st, { city: info(st.store, 'city'), zone: info(st.store, 'zone'), am: info(st.store, 'am'), rom: info(st.store, 'rom') });
+    }), { freezeCols: 2 });
 
     table(tab('Split runs', C.split), [
       { key: 'n', header: 'Run #', width: 7, num: true },
       { key: 'level', header: 'Risk', width: 10, badge: true, center: true },
       { key: 'score', header: 'Score', width: 9, num: true, bar: C.barDirect, barMax: 100 },
-      { key: 'store', header: 'Branch', width: 30, bold: true },
+      { key: 'store', header: 'Branch', width: 30, bold: true }
+    ].concat(amCols).concat([
       { key: 'label', header: 'Item / colour', width: 26 },
       { key: 'start', header: 'From', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
       { key: 'end', header: 'To', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
@@ -465,11 +475,11 @@
       { key: 'pace', header: '× normal pace', width: 11, num: true, fmt: '[>=100]"100+";0.0' },
       { key: 'same', header: 'Same basket', width: 11, num: true, fmt: '0%' },
       { key: 'basket', header: 'Most common basket', width: 60, wrap: true }
-    ].concat(reviewCols), R.runs.map(function (r, i) {
+    ]).concat(reviewCols), R.runs.map(function (r, i) {
       var k = meta.runKey ? meta.runKey(r) : '';
       return { n: i + 1, level: r.level, score: r.score, store: r.store, label: r.label, start: xlDate(r.start), end: xlDate(r.end),
         dur: r.durationMin, invoices: r.invoices, mugs: r.mugs, excess: r.excess, sales: r.sales, pace: Math.min(r.burst, 100),
-        same: r.invoices >= 3 ? r.identical : null, basket: r.topBasket, review: review(k), note: reviewNote(k) };
+        same: r.invoices >= 3 ? r.identical : null, basket: r.topBasket, review: review(k), note: reviewNote(k), am: info(r.store, 'am') };
     }), { freezeCols: 4 });
 
     var inv = [];
@@ -493,7 +503,8 @@
     ], inv, { freezeCols: 3 });
 
     table(tab('Direct violations', C.High), [
-      { key: 'store', header: 'Branch', width: 30, bold: true },
+      { key: 'store', header: 'Branch', width: 30, bold: true }
+    ].concat(amCols).concat([
       { key: 'label', header: 'Item / colour', width: 26 },
       { key: 'items', header: 'Items', width: 30 },
       { key: 'time', header: 'Time', width: 18, fmt: 'yyyy-mm-dd hh:mm:ss' },
@@ -501,10 +512,10 @@
       { key: 'excess', header: 'Over limit', width: 9, num: true },
       { key: 'sales', header: 'SAR', width: 11, num: true, fmt: '#,##0.00' },
       { key: 'basket', header: 'Full invoice', width: 70, wrap: true }
-    ].concat(reviewCols), R.direct.map(function (d) {
+    ]).concat(reviewCols), R.direct.map(function (d) {
       var k = meta.directKey ? meta.directKey(d) : '';
       return { store: d.store, label: d.label, items: d.items, time: xlDate(d.time), qty: d.qty, excess: d.excess, sales: d.sales, basket: d.basket,
-        review: review(k), note: reviewNote(k) };
+        review: review(k), note: reviewNote(k), am: info(d.store, 'am') };
     }), { freezeCols: 1 });
 
     table(tab('Zero-qty lines', C.muted), [

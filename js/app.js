@@ -6,7 +6,7 @@
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var state = {
-    reviews: {}, cloudReport: null,
+    reviews: {}, cloudReport: null, mapping: null, scope: { am: '', rom: '', city: '', zone: '' },
     parsed: null, result: null, fileName: '',
     tab: 'stores', sort: {}, open: {},
     filter: { store: '', level: '', q: '' },
@@ -106,7 +106,10 @@
     return {
       save: function (rec) { return tx('readwrite', function (s) { return s.put(rec, KEY); }).catch(function () {}); },
       get: function () { return tx('readonly', function (s) { return s.get(KEY); }).catch(function () { return null; }); },
-      clear: function () { return tx('readwrite', function (s) { return s.delete(KEY); }).catch(function () {}); }
+      clear: function () { return tx('readwrite', function (s) { return s.delete(KEY); }).catch(function () {}); },
+      saveKey: function (k, rec) { return tx('readwrite', function (s) { return s.put(rec, k); }).catch(function () {}); },
+      getKey: function (k) { return tx('readonly', function (s) { return s.get(k); }).catch(function () { return null; }); },
+      clearKey: function (k) { return tx('readwrite', function (s) { return s.delete(k); }).catch(function () {}); }
     };
   })();
 
@@ -238,7 +241,7 @@
       }).catch(function (err) { console.error(err); toast('Could not open report: ' + err.message, 'error'); });
     },
     save: function (buf, file, parsed) {
-      var R = state.result, T = R.totals, id;
+      var R = E.analyse(parsed.lines, readOptions()), T = R.totals, id;
       toast('Saving to HM cloud…', 'busy');
       var body = {
         reportDate: isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength,
@@ -386,7 +389,11 @@
 
   // Start: cloud if available (open the latest day), otherwise restore from this browser.
   cloud.init().then(function (on) {
+    var mapReady = on
+      ? api('/api/mapping').then(function (m) { if (m && m.branches) { state.mapping = m; renderMapStatus(); } }).catch(function () {})
+      : store.getKey('mapping').then(function (m) { if (m && m.branches) { state.mapping = m; renderMapStatus(); if (state.parsed) run(false); } });
     if (on) {
+      mapReady.then(function () { if (state.parsed) run(false); });
       cloud.refresh().then(function (list) {
         renderTrends();
         if (list.length && !state.parsed) cloud.open(list[0].id);
@@ -399,6 +406,104 @@
       catch (err) { console.error(err); store.clear(); }
     });
   });
+
+  /* ---------- branch mapping (area manager, ROM, city, zone) ---------- */
+  var MAP = window.MugsMapping;
+  var SCOPE_FIELDS = [['am', 'Area manager'], ['rom', 'ROM'], ['city', 'City'], ['zone', 'Zone']];
+  function branchInfo(store) { return state.mapping ? MAP.lookup(state.mapping, store) : null; }
+  function scopeActive() { return !!(state.mapping && (state.scope.am || state.scope.rom || state.scope.city || state.scope.zone)); }
+  function inScope(store) {
+    var m = branchInfo(store);
+    if (!m) return false;
+    return SCOPE_FIELDS.every(function (f) { return !state.scope[f[0]] || m[f[0]] === state.scope[f[0]]; });
+  }
+  function scopeLabel() {
+    if (!scopeActive()) return '';
+    return SCOPE_FIELDS.filter(function (f) { return state.scope[f[0]]; }).map(function (f) { return f[1] + ': ' + state.scope[f[0]]; }).join(' · ');
+  }
+  function renderScope() {
+    var bar = $('scopeBar');
+    bar.hidden = !state.mapping;
+    if (!state.mapping || !state.parsed) return;
+    // options come from the branches present in this file, narrowed by the other active choices
+    var stores = {};
+    state.parsed.lines.forEach(function (l) { stores[l.store] = 1; });
+    var infos = Object.keys(stores).map(branchInfo).filter(Boolean);
+    SCOPE_FIELDS.forEach(function (f) {
+      var key = f[0], sel = $('scope_' + key);
+      var vals = {};
+      infos.forEach(function (m) {
+        var ok = SCOPE_FIELDS.every(function (g) { return g[0] === key || !state.scope[g[0]] || m[g[0]] === state.scope[g[0]]; });
+        if (ok && m[key]) vals[m[key]] = (vals[m[key]] || 0) + 1;
+      });
+      sel.innerHTML = '<option value="">All ' + (key === 'city' ? 'cities' : key === 'zone' ? 'zones' : f[1] + 's') + '</option>' +
+        Object.keys(vals).sort().map(function (v) {
+          return '<option value="' + esc(v) + '"' + (state.scope[key] === v ? ' selected' : '') + '>' + esc(v) + ' (' + vals[v] + ')</option>';
+        }).join('');
+    });
+    var total = Object.keys(stores).length, mapped = infos.length, shown = state.result ? state.result.stores.length : total;
+    $('scopeNote').textContent = scopeActive()
+      ? 'Showing ' + plural(shown, 'branch', 'branches') + ' of ' + total
+      : mapped + ' of ' + total + ' branches matched to the mapping' + (mapped < total ? ' · ' + (total - mapped) + ' not in mapping' : '');
+    $('scopeReset').hidden = !scopeActive();
+  }
+  SCOPE_FIELDS.forEach(function (f) {
+    $('scope_' + f[0]).addEventListener('change', function () {
+      state.scope[f[0]] = this.value;
+      state.filter.store = ''; state.open = {};
+      if (state.parsed) run(false);
+    });
+  });
+  $('scopeReset').addEventListener('click', function () {
+    state.scope = { am: '', rom: '', city: '', zone: '' };
+    if (state.parsed) run(false);
+  });
+
+  function renderMapStatus() {
+    var m = state.mapping;
+    $('mapStatus').innerHTML = m
+      ? '<b>' + n0(m.count) + ' branches</b> from ' + esc(m.fileName || 'mapping file') +
+        (m.savedAt ? '<br><span class="muted small">Loaded ' + new Date(m.savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) +
+          (m.savedBy ? ' by ' + esc(m.savedBy) : '') + (cloud.on ? ' · shared with your team' : ' · kept in this browser') + '</span>' : '')
+      : 'No mapping loaded. Upload the Master Location Mapping file to sort and filter by area manager, ROM, city and zone.';
+    $('btnMapClear').hidden = !m;
+    $('btnMap').textContent = m ? 'Replace mapping' : 'Upload mapping';
+  }
+  function setMapping(m, persist) {
+    state.mapping = m;
+    renderMapStatus();
+    if (persist) {
+      if (cloud.on) api('/api/mapping', { method: 'PUT', json: m }).then(function (r) {
+        m.savedBy = r.savedBy; renderMapStatus(); toast('Branch mapping saved for your team');
+      }).catch(function (err) { toast('Mapping not saved to the cloud: ' + err.message, 'error'); });
+      else store.saveKey('mapping', m);
+    }
+    if (state.parsed) { state.open = {}; run(false); }
+  }
+  $('btnMap').addEventListener('click', function () { $('mapFile').click(); });
+  $('mapFile').addEventListener('change', function () {
+    var f = this.files[0]; this.value = '';
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        var m = MAP.parseWorkbook(XLSX, wb);
+        m.fileName = f.name; m.savedAt = Date.now();
+        setMapping(m, true);
+        if (!cloud.on) toast('Mapping loaded: ' + m.count + ' branches');
+      } catch (err) { console.error(err); toast('Could not read the mapping: ' + err.message, 'error'); }
+    };
+    reader.readAsArrayBuffer(f);
+  });
+  $('btnMapClear').addEventListener('click', function () {
+    if (!window.confirm(cloud.on ? 'Remove the branch mapping for everyone?' : 'Remove the branch mapping from this browser?')) return;
+    state.scope = { am: '', rom: '', city: '', zone: '' };
+    if (cloud.on) api('/api/mapping', { method: 'DELETE' }).catch(function () {});
+    else store.clearKey('mapping');
+    setMapping(null, false);
+  });
+  renderMapStatus();
 
   /* ---------- settings ---------- */
   function readOptions() {
@@ -430,8 +535,20 @@
 
   /* ---------- analysis ---------- */
   function run(isNewFile) {
-    var res = E.analyse(state.parsed.lines, readOptions());
+    var lines = state.parsed.lines;
+    if (scopeActive()) {
+      var scoped = lines.filter(function (l) { return inScope(l.store); });
+      if (scoped.length) lines = scoped;
+      else { state.scope = { am: '', rom: '', city: '', zone: '' }; toast('No branches in this file match that view, showing all branches', 'error'); }
+    }
+    var res = E.analyse(lines, readOptions());
+    res.stores.forEach(function (s) {
+      var m = branchInfo(s.store);
+      s.city = m ? m.city : ''; s.zone = m ? m.zone : ''; s.am = m ? m.am : ''; s.rom = m ? m.rom : ''; s.om = m ? m.om : '';
+      s.mapped = !!m;
+    });
     state.result = res;
+    renderScope();
     var T = res.totals;
     document.body.classList.add('has-data');
     $('empty').hidden = true;
@@ -619,6 +736,9 @@
     stores: [
       { k: 'status', h: 'Risk', f: function (r) { return badge(r.status); }, sortVal: function (r) { return { High: 3, Medium: 2, Low: 1, Clean: 0 }[r.status]; } },
       { k: 'store', h: 'Branch', cls: 'strong' },
+      { k: 'city', h: 'City', map: 1, f: function (r) { return r.mapped ? esc(r.city) : '<span class="muted">Not in mapping</span>'; } },
+      { k: 'am', h: 'Area manager', map: 1, f: function (r) { return esc(r.am || ''); } },
+      { k: 'rom', h: 'ROM', map: 1, f: function (r) { return esc(r.rom || ''); } },
       { k: 'invoices', h: 'Invoices', num: 1, f: function (r) { return n0(r.invoices); } },
       { k: 'mugs', h: 'Mugs', num: 1, f: function (r) { return n0(r.mugs); } },
       { k: 'directLines', h: 'Direct', num: 1 },
@@ -634,6 +754,7 @@
       { k: 'level', h: 'Risk', f: function (r) { return badge(r.level); }, sortVal: function (r) { return r.score; } },
       { k: 'score', h: 'Score', num: 1, f: function (r) { return r.score + '<span class="meter' + (r.score >= 60 ? ' warn' : '') + '"><i style="width:' + r.score + '%"></i></span>'; } },
       { k: 'store', h: 'Branch', cls: 'strong' },
+      { k: 'am', h: 'Area manager', map: 1, f: function (r) { var m = branchInfo(r.store); return esc(m ? m.am : ''); }, sortVal: function (r) { var m = branchInfo(r.store); return m ? m.am : ''; } },
       { k: 'label', h: 'Item / colour' },
       { k: 'start', h: 'From', f: function (r) { return t(r.start); } },
       { k: 'end', h: 'To', f: function (r) { return t(r.end); } },
@@ -647,6 +768,7 @@
     ],
     direct: [
       { k: 'store', h: 'Branch', cls: 'strong' },
+      { k: 'am', h: 'Area manager', map: 1, f: function (r) { var m = branchInfo(r.store); return esc(m ? m.am : ''); }, sortVal: function (r) { var m = branchInfo(r.store); return m ? m.am : ''; } },
       { k: 'label', h: 'Item / colour' },
       { k: 'time', h: 'Time', f: function (r) { return t(r.time); } },
       { k: 'qty', h: 'Qty', num: 1 },
@@ -675,7 +797,9 @@
         if (lv !== null && lv !== F.level) return false;
       }
       if (q) {
-        var hay = (r.store + ' ' + (r.label || '') + ' ' + (r.item || '') + ' ' + (r.items || '') + ' ' + (r.basket || '')).toLowerCase();
+        var mi = branchInfo(r.store);
+        var hay = (r.store + ' ' + (r.label || '') + ' ' + (r.item || '') + ' ' + (r.items || '') + ' ' + (r.basket || '') +
+          (mi ? ' ' + mi.city + ' ' + mi.zone + ' ' + mi.am + ' ' + mi.rom : '')).toLowerCase();
         if (hay.indexOf(q) < 0) return false;
       }
       return true;
@@ -683,7 +807,7 @@
   }
 
   function renderTable() {
-    var tab = state.tab, cols = COLS[tab].filter(function (c) { return !c.cloud || cloud.on; });
+    var tab = state.tab, cols = COLS[tab].filter(function (c) { return (!c.cloud || cloud.on) && (!c.map || state.mapping); });
     var rows = dataFor(tab).slice();
     var s = state.sort[tab] || DEFAULT_SORT[tab];
     if (s) {
@@ -829,7 +953,8 @@
     btnExport.classList.add('busy'); btnExport.setAttribute('aria-busy', 'true'); label.textContent = 'Preparing…';
     loadExcelJs().then(function () {
       return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.parsed.reportDate,
-        reviews: cloud.on ? state.reviews : null, reviewLabels: REVIEW_LABELS, runKey: runKey, directKey: directKey });
+        reviews: cloud.on ? state.reviews : null, reviewLabels: REVIEW_LABELS, runKey: runKey, directKey: directKey,
+        branchInfo: state.mapping ? branchInfo : null, scopeLabel: scopeLabel() });
     }).then(function (blob) {
       var d = new Date(state.result.totals.start);
       var day = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);

@@ -15,6 +15,14 @@ Each branch gets a risk level (High / Medium / Low / Clean). Click a branch to s
 
 **Privacy:** the file is read in your browser. No data is uploaded anywhere, and sales exports are git-ignored so they are never committed.
 
+## Branch mapping
+
+Upload the **Master Location Mapping** workbook (Detection rules panel → *Branch mapping*) to link each store to its city, zone, area manager and ROM by branch code (`B99, Mec Haram` → `B99`). It reads the `Location_Mapping` sheet and fills gaps for new branches from the `Excluded` sheet (e.g. B121 Madina Haram).
+
+- A **View** bar scopes the whole report (KPIs, chart, tables, Excel export) to one area manager, ROM, city or zone.
+- Branch, split-run and direct-violation tables gain City / Area manager / ROM columns (sortable, searchable).
+- The mapping contains staff names, so it is **never committed**: it is kept in the browser (local mode) or in R2 behind the login (cloud mode, `GET/PUT/DELETE /api/mapping`).
+
 ## Excel report
 
 **Export report** downloads `HM Mugs SOP report <date>.xlsx`:
