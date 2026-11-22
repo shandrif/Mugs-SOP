@@ -807,3 +807,11 @@ table.users input.u-name { width: 150px; }
 table.users input.u-am { width: 180px; }
 table.users td.actions { white-space: normal; min-width: 230px; }
 table.users td.actions .btn { margin: 2px 0; }
+
+/* ---------- first load: no upload-screen flash while the report loads ---------- */
+.boot-loader { display: none; }
+html.booting .boot-loader { display: flex; align-items: center; gap: 12px; grid-column: 1 / -1; color: var(--hm-sand); font-weight: 600; font-size: 15px; min-height: 120px; }
+html.booting .hero-intro, html.booting .hero-report, html.booting #drop, html.booting main, html.booting .footer { visibility: hidden; }
+html.booting .hero-inner { grid-template-columns: 1fr; }
+.boot-spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(233, 220, 192, 0.35); border-top-color: var(--hm-sand); animation: spin 800ms linear infinite; }
+@media (prefers-reduced-motion: reduce) { .boot-spin { animation: none; } }

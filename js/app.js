@@ -14,6 +14,8 @@
   };
 
   /* ---------- helpers ---------- */
+  // Until we know whether there is a report to show, keep the upload screen hidden (no flash on refresh).
+  function bootDone() { document.documentElement.classList.remove('booting'); }
   function esc(s) {
     return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -417,7 +419,7 @@
 
   // Start: cloud if available (open the latest day), otherwise restore from this browser.
   cloud.init().then(function (on) {
-    if (on === 'login') return;
+    if (on === 'login') { bootDone(); return; }
     var mapReady = on
       ? api('/api/mapping').then(function (m) { if (m && m.branches) { state.mapping = m; renderMapStatus(); } }).catch(function () {})
       : store.getKey('mapping').then(function (m) { if (m && m.branches) { state.mapping = m; renderMapStatus(); if (state.parsed) run(false); } });
@@ -425,16 +427,21 @@
       mapReady.then(function () { if (state.parsed) run(false); });
       cloud.refresh().then(function (list) {
         renderTrends();
-        if (list.length && !state.parsed) cloud.open(list[0].id);
-        else if (!list.length && !cloud.admin) { $('empty').hidden = true; $('viewerEmpty').hidden = false; }
-      }).catch(function (err) { toast('Could not load reports: ' + err.message, 'error'); });
+        if (list.length && !state.parsed) cloud.open(list[0].id).then(bootDone, bootDone);
+        else {
+          if (!list.length && !cloud.admin) { $('empty').hidden = true; $('viewerEmpty').hidden = false; }
+          bootDone();
+        }
+      }).catch(function (err) { bootDone(); toast('Could not load reports: ' + err.message, 'error'); });
       return;
     }
     store.get().then(function (rec) {
-      if (!rec || !rec.bytes || state.parsed) return;
-      try { process(rec.bytes, rec.name, rec.savedAt); }
-      catch (err) { console.error(err); store.clear(); }
-    });
+      if (rec && rec.bytes && !state.parsed) {
+        try { process(rec.bytes, rec.name, rec.savedAt); }
+        catch (err) { console.error(err); store.clear(); }
+      }
+      bootDone();
+    }, bootDone);
   });
 
   /* ---------- branch mapping (area manager, ROM, city, zone) ---------- */
