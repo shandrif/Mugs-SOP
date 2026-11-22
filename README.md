@@ -9,9 +9,8 @@ Open the page, drop the daily POS **“Sales By Product”** export (.xlsx), and
 |---|---|
 | **Direct violations** | An invoice with more than the limit of one colour/item. |
 | **Split-invoice runs** | A branch ringing the same colour on back-to-back invoices, each within the limit, that together go over it (the “2 per invoice, many invoices” workaround). |
-| **Zero-qty lines** | 0-quantity / SAR 0 lines (voids, returns) for review. |
 
-Each branch gets a risk level (High / Medium / Low / Clean). Click a branch to see its runs, click a run to see every invoice in it, and export everything to Excel.
+Lines with 0 quantity (voids, returns) are ignored, in new uploads and in saved data. Each branch gets a risk level (High / Medium / Low / Clean). Click a branch to see its runs, click a run to see every invoice in it, and export everything to Excel.
 
 **Privacy:** the file is read in your browser. No data is uploaded anywhere, and sales exports are git-ignored so they are never committed.
 
@@ -32,7 +31,7 @@ A scheduled Claude task runs every **Sunday morning (Riyadh)**: it reads `Master
 **Export report** downloads `HM Mugs SOP report <date>.xlsx`:
 
 - **Dashboard:** HM title band with date, file and rules; six KPI tiles; charts of excess mugs by branch (top 10) and by hour of day; top 10 split runs and direct violations; branches by risk level; how-to-read note. Set up to print on one landscape page width.
-- **Branches, Split runs, Split run invoices, Direct violations, Zero-qty lines:** green header, coloured risk labels, bars inside cells for the key numbers, filters, frozen headers, real dates and number formats.
+- **Branches, Split runs, Split run invoices, Direct violations:** green header, coloured risk labels, bars inside cells for the key numbers, filters, frozen headers, real dates and number formats.
 - **Settings:** rules used and method notes.
 
 ## How detection works
