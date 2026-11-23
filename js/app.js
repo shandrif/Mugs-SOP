@@ -6,7 +6,7 @@
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var state = {
-    reviews: {}, cloudReport: null, mapping: null, scope: { am: '', rom: '', city: '', zone: '' },
+    reviews: {}, cloudReport: null, day: '', mapping: null, scope: { am: '', rom: '', city: '', zone: '' },
     parsed: null, result: null, fileName: '',
     tab: 'stores', sort: {}, open: {},
     filter: { store: '', level: '', q: '' },
@@ -140,6 +140,8 @@
     meta = meta || {};
     state.parsed = parsed; state.fileName = name; state.savedAt = meta.savedAt || null;
     state.cloudReport = meta.cloud || null; state.reviews = meta.reviews || {};
+    var days = parsed.days || [];
+    state.day = days.length > 1 ? days[days.length - 1] : '';
     state.open = {};
     state.filter = { store: '', level: '', q: '' };
     $('fStore').value = ''; $('fLevel').value = ''; $('fSearch').value = '';
@@ -182,6 +184,22 @@
   var REVIEW_LABELS = { open: 'Open', genuine: 'Genuine (family/group)', violation: 'Violation', false_positive: 'False positive' };
   function runKey(r) { return 'run|' + r.store + '|' + r.label + '|' + r.start; }
   function directKey(d) { return 'direct|' + d.store + '|' + d.label + '|' + d.time; }
+  function shortDay(iso) {
+    return new Date(Date.parse(iso + 'T00:00:00Z')).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  }
+  // A multi-day file: pick which accounting day to show (cloud saves each day separately).
+  function renderDayPicker() {
+    var days = (state.parsed && state.parsed.days) || [], sel = $('daySelect');
+    $('dayPick').hidden = days.length <= 1;
+    if (days.length <= 1) return;
+    sel.innerHTML = days.map(function (d) {
+      return '<option value="' + d + '"' + (state.day === d ? ' selected' : '') + '>' + esc(shortDay(d)) + '</option>';
+    }).join('') + '<option value=""' + (!state.day ? ' selected' : '') + '>All ' + days.length + ' days together</option>';
+  }
+  $('daySelect').addEventListener('change', function () {
+    state.day = this.value; state.open = {}; state.filter.store = '';
+    run(true);
+  });
   function isoDate(parsed, T) {
     var m = parsed.reportDate && String(parsed.reportDate).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) return m[3] + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
@@ -263,13 +281,12 @@
         toast('Opened ' + longDate(meta.periodStart || Date.parse(meta.reportDate)) + ' from HM cloud');
       }).catch(function (err) { console.error(err); toast('Could not open report: ' + err.message, 'error'); });
     },
-    save: function (buf, file, parsed) {
+    // Save one day as one report. Resolves { id, replaced }.
+    saveDay: function (buf, file, parsed, dayIso) {
       var R = E.analyse(parsed.lines, readOptions()), T = R.totals, id;
-      toast('Saving to HM cloud…', 'busy');
       var info = function (store, k) { var m = branchInfo(store); return m ? (m[k] || '') : ''; };
-      if (!state.mapping) toast('Saving without a branch mapping: area managers will not see this day until you upload the mapping and re-upload the file.', 'error');
       var body = {
-        reportDate: isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength,
+        reportDate: dayIso || isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength,
         periodStart: T.start, periodEnd: T.end, rules: R.options,
         totals: {
           mugs: T.mugs, sales: Math.round(T.sales * 100) / 100, invoices: T.invoices, stores: T.stores,
@@ -285,7 +302,7 @@
       };
       var byAm = {};
       var lines = parsed.lines.map(function (l) {
-        return { row: l.row, store: l.store, code: l.code, item: l.item, itemEn: l.itemEn, colour: l.colour, time: l.time,
+        return { row: l.row, store: l.store, code: l.code, item: l.item, itemEn: l.itemEn, colour: l.colour, time: l.time, day: l.day,
           sales: l.sales, qty: l.qty, invoice: l.invoice, cashier: l.cashier, customer: l.customer };
       });
       lines.forEach(function (l) { var am = info(l.store, 'am'); if (am) (byAm[am] = byAm[am] || []).push(l); });
@@ -304,16 +321,46 @@
         })));
       }).then(function () {
         return api('/api/reports/' + id + '/complete', { method: 'POST' });
-      }).then(function (res) {
-        return api('/api/reports/' + id).then(function (meta) {
-          state.cloudReport = meta; state.reviews = {};
-          run(false);
-          toast(res.replaced ? 'Saved to HM cloud · replaced the earlier upload for this day' : 'Saved to HM cloud · your team can see it now');
-          cloud.refresh(); renderTrends();
+      }).then(function (res) { return { id: id, replaced: res.replaced }; });
+    },
+    // Save an upload: a single-day file as before; a multi-day file as one report per accounting day.
+    save: function (buf, file, parsed) {
+      var days = parsed.days || [];
+      if (!state.mapping) toast('Saving without a branch mapping: area managers will not see this data until you upload the mapping and re-upload the file.', 'error');
+      if (days.length <= 1) {
+        toast('Saving to HM cloud…', 'busy');
+        return cloud.saveDay(buf, file, parsed, days[0] || '').then(function (r) {
+          return api('/api/reports/' + r.id).then(function (meta) {
+            state.cloudReport = meta; state.reviews = {};
+            run(false);
+            toast(r.replaced ? 'Saved to HM cloud · replaced the earlier upload for this day' : 'Saved to HM cloud · your team can see it now');
+            cloud.refresh(); renderTrends();
+          });
+        }).catch(function (err) {
+          console.error(err);
+          toast('Not saved to the cloud: ' + err.message + '. The report is still shown here.', 'error');
+        });
+      }
+      var saved = [], i = 0;
+      var next = function () {
+        if (i >= days.length) return Promise.resolve();
+        var d = days[i++];
+        toast('Saving day ' + i + ' of ' + days.length + ' (' + shortDay(d) + ') to HM cloud…', 'busy');
+        var sub = { lines: parsed.lines.filter(function (l) { return l.day === d; }), warnings: [], reportDate: parsed.reportDate, days: [d] };
+        return cloud.saveDay(buf, file, sub, d).then(function (r) { saved.push({ day: d, id: r.id }); return next(); });
+      };
+      return next().then(function () {
+        toast('Saved ' + days.length + ' days to HM cloud (' + shortDay(days[0]) + ' – ' + shortDay(days[days.length - 1]) + ') · your team can see them now');
+        renderTrends();
+        return cloud.refresh().then(function () {
+          // Show the latest day as its own cloud report (same view everyone else gets).
+          var last = saved[saved.length - 1];
+          if (last) return cloud.open(last.id);
         });
       }).catch(function (err) {
         console.error(err);
-        toast('Not saved to the cloud: ' + err.message + '. The report is still shown here.', 'error');
+        toast('Saved ' + saved.length + ' of ' + days.length + ' days. Stopped: ' + err.message + '. Upload the file again to finish.', 'error');
+        cloud.refresh(); renderTrends();
       });
     },
     remove: function (id) {
@@ -849,14 +896,15 @@
 
   /* ---------- analysis ---------- */
   function run(isNewFile) {
-    var lines = state.parsed.lines;
+    var allLines = state.day ? state.parsed.lines.filter(function (l) { return l.day === state.day; }) : state.parsed.lines;
+    var lines = allLines;
     if (scopeActive()) {
       var scoped = lines.filter(function (l) { return inScope(l.store); });
       if (scoped.length) lines = scoped;
       else { state.scope = { am: '', rom: '', city: '', zone: '' }; toast('No branches in this file match that view, showing all branches', 'error'); }
     }
     var res = E.analyse(lines, readOptions());
-    state.fullResult = lines === state.parsed.lines ? res : E.analyse(state.parsed.lines, readOptions());
+    state.fullResult = lines === allLines ? res : E.analyse(allLines, readOptions());
     res.stores.forEach(function (s) {
       var m = branchInfo(s.store);
       s.city = m ? m.city : ''; s.zone = m ? m.zone : ''; s.am = m ? m.am : ''; s.rom = m ? m.rom : ''; s.om = m ? m.om : '';
@@ -877,7 +925,8 @@
     $('results').hidden = false;
     $('btnExport').disabled = false;
 
-    $('reportTitle').textContent = longDate(T.start);
+    $('reportTitle').textContent = state.day ? longDate(Date.parse(state.day + 'T00:00:00Z')) : longDate(T.start);
+    renderDayPicker();
     $('fileInfo').textContent = state.fileName + ' · ' + plural(T.stores, 'branch', 'branches') + ' · ' +
       dt(T.start) + ' → ' + dt(T.end) +
       (state.parsed.warnings.length ? ' · ' + plural(state.parsed.warnings.length, 'row', 'rows') + ' skipped' : '') +
@@ -1266,7 +1315,7 @@
     var label = btnExport.querySelector('span'), prev = label.textContent;
     btnExport.classList.add('busy'); btnExport.setAttribute('aria-busy', 'true'); label.textContent = 'Preparing…';
     loadExcelJs().then(function () {
-      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.parsed.reportDate,
+      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.day || state.parsed.reportDate,
         reviews: cloud.on ? state.reviews : null, reviewLabels: REVIEW_LABELS, runKey: runKey, directKey: directKey,
         branchInfo: state.mapping ? branchInfo : null, scopeLabel: scopeLabel() });
     }).then(function (blob) {

@@ -38,6 +38,13 @@ assert.strictEqual(E.analyse(p.lines.concat([Object.assign({}, p.lines[0], { qty
 assert.strictEqual(a.stores.find(s => s.store === 'B Store').status, 'Clean');
 assert.strictEqual(a.stores.find(s => s.store === 'A Store').status === 'Clean', false);
 
+// Accounting day is kept per line, and a file can hold several days.
+assert.deepStrictEqual(p.days, ['2026-11-18']);
+assert.strictEqual(p.lines[0].day, '2026-11-18');
+assert.strictEqual(E.toDay(46344), '2026-11-18');
+assert.strictEqual(E.toDay('11/15/2026'), '2026-11-15');
+assert.strictEqual(E.toDay('22.11.2026'), '2026-11-22');
+
 // Excel serial numbers keep millisecond precision.
 assert.strictEqual(E.fmtTime(E.toMs(46344.41298423611), true), '2026-11-18 09:54:41');
 
