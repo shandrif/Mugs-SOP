@@ -278,15 +278,20 @@
         if (!cloud.admin && meta.rules) applyRules(meta.rules);
         useParsed({ lines: data.lines, warnings: [], reportDate: data.reportDate }, meta.fileName, { cloud: meta, reviews: reviews });
         renderHistory();
-        toast('Opened ' + longDate(meta.periodStart || Date.parse(meta.reportDate)) + ' from HM cloud');
+        var spanH = meta.periodEnd && meta.periodStart ? (meta.periodEnd - meta.periodStart) / 3600000 : 0;
+        if (spanH > 36 && !(data.lines[0] && data.lines[0].day) && cloud.admin) {
+          toast('This day was saved by an older version and holds several days together. Upload the file again to split it into separate days.', 'error');
+        } else {
+          toast('Opened ' + longDate(Date.parse(meta.reportDate + 'T00:00:00Z')) + ' from HM cloud');
+        }
       }).catch(function (err) { console.error(err); toast('Could not open report: ' + err.message, 'error'); });
     },
     // Save one day as one report. Resolves { id, replaced }.
-    saveDay: function (buf, file, parsed, dayIso) {
+    saveDay: function (buf, file, parsed, dayIso, fileFrom) {
       var R = E.analyse(parsed.lines, readOptions()), T = R.totals, id;
       var info = function (store, k) { var m = branchInfo(store); return m ? (m[k] || '') : ''; };
       var body = {
-        reportDate: dayIso || isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength,
+        reportDate: dayIso || isoDate(parsed, T), fileName: file.name, fileSize: buf.byteLength, fileFrom: fileFrom || undefined,
         periodStart: T.start, periodEnd: T.end, rules: R.options,
         totals: {
           mugs: T.mugs, sales: Math.round(T.sales * 100) / 100, invoices: T.invoices, stores: T.stores,
@@ -309,7 +314,8 @@
       return api('/api/reports', { method: 'POST', json: body }).then(function (d) {
         id = d.id;
         return Promise.all([
-          api('/api/reports/' + id + '/file', { method: 'PUT', body: buf, type: file.type || 'application/octet-stream' }),
+          // Days after the first reuse the original file already uploaded with the first day.
+          fileFrom ? null : api('/api/reports/' + id + '/file', { method: 'PUT', body: buf, type: file.type || 'application/octet-stream' }),
           gzip(JSON.stringify({ v: 1, reportDate: parsed.reportDate, lines: lines })).then(function (gz) {
             return api('/api/reports/' + id + '/lines', { method: 'PUT', body: gz, type: 'application/gzip' });
           })
@@ -329,7 +335,9 @@
       if (!state.mapping) toast('Saving without a branch mapping: area managers will not see this data until you upload the mapping and re-upload the file.', 'error');
       if (days.length <= 1) {
         toast('Saving to HM cloud…', 'busy');
+        cloud.saving = true;
         return cloud.saveDay(buf, file, parsed, days[0] || '').then(function (r) {
+          cloud.saving = false;
           return api('/api/reports/' + r.id).then(function (meta) {
             state.cloudReport = meta; state.reviews = {};
             run(false);
@@ -337,28 +345,41 @@
             cloud.refresh(); renderTrends();
           });
         }).catch(function (err) {
+          cloud.saving = false;
           console.error(err);
           toast('Not saved to the cloud: ' + err.message + '. The report is still shown here.', 'error');
         });
       }
-      var saved = [], i = 0;
+      var saved = [], i = 0, done = 0, firstId = null;
+      var sub = function (d) { return { lines: parsed.lines.filter(function (l) { return l.day === d; }), warnings: [], reportDate: parsed.reportDate, days: [d] }; };
+      var progress = function () { toast('Saving ' + done + ' of ' + days.length + ' days to HM cloud…', 'busy'); };
+      // First day uploads the original file; the rest reference it and save 3 at a time.
       var next = function () {
         if (i >= days.length) return Promise.resolve();
         var d = days[i++];
-        toast('Saving day ' + i + ' of ' + days.length + ' (' + shortDay(d) + ') to HM cloud…', 'busy');
-        var sub = { lines: parsed.lines.filter(function (l) { return l.day === d; }), warnings: [], reportDate: parsed.reportDate, days: [d] };
-        return cloud.saveDay(buf, file, sub, d).then(function (r) { saved.push({ day: d, id: r.id }); return next(); });
+        return cloud.saveDay(buf, file, sub(d), d, firstId).then(function (r) {
+          saved.push({ day: d, id: r.id }); done++; progress(); return next();
+        });
       };
-      return next().then(function () {
-        toast('Saved ' + days.length + ' days to HM cloud (' + shortDay(days[0]) + ' – ' + shortDay(days[days.length - 1]) + ') · your team can see them now');
+      cloud.saving = true;
+      progress();
+      return cloud.saveDay(buf, file, sub(days[0]), days[0], null).then(function (r) {
+        saved.push({ day: days[0], id: r.id }); firstId = r.id; done++; i = 1; progress();
+        return Promise.all([next(), next(), next()]);
+      }).then(function () {
+        cloud.saving = false;
+        saved.sort(function (a, b) { return a.day < b.day ? -1 : 1; });
+        var msg = 'Saved ' + days.length + ' days to HM cloud (' + shortDay(days[0]) + ' – ' + shortDay(days[days.length - 1]) + ') · your team can see them now';
+        toast(msg);
         renderTrends();
         return cloud.refresh().then(function () {
-          // Show the latest day as its own cloud report (same view everyone else gets).
+          // Show the latest day as its own cloud report (same view everyone else gets), then confirm the save.
           var last = saved[saved.length - 1];
-          if (last) return cloud.open(last.id);
+          if (last) return cloud.open(last.id).then(function () { toast(msg + ' · showing ' + shortDay(last.day)); });
         });
       }).catch(function (err) {
         console.error(err);
+        cloud.saving = false;
         toast('Saved ' + saved.length + ' of ' + days.length + ' days. Stopped: ' + err.message + '. Upload the file again to finish.', 'error');
         cloud.refresh(); renderTrends();
       });
@@ -407,6 +428,10 @@
         new Date(r.reviewedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</span>' : '') +
       '</div>';
   }
+
+  window.addEventListener('beforeunload', function (e) {
+    if (cloud.saving) { e.preventDefault(); e.returnValue = 'Days are still being saved'; return e.returnValue; }
+  });
 
   function renderHistory() {
     var el = $('historyBody');
