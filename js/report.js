@@ -242,7 +242,7 @@
     [1, 7].forEach(function (r) { ws.getRow(r).height = 10; });
     ws.getRow(2).height = 18; ws.getRow(3).height = 36; ws.getRow(4).height = 20; ws.getRow(5).height = 18; ws.getRow(6).height = 18;
     merge('B2:I2', 'HALF MILLION  ·  RETAIL COMPLIANCE', font({ bold: true, size: 9, color: C.sand2 }));
-    merge('B3:M3', 'Mugs SOP report  ·  ' + fmtDate(T.start), font({ serif: true, size: 24, color: 'F6EEDC' }));
+    merge('B3:M3', 'Mugs SOP report  ·  ' + (meta.periodLabel || fmtDate(T.start)), font({ serif: true, size: 24, color: 'F6EEDC' }));
     merge('B4:M4', meta.fileName + '  ·  ' + T.stores + ' branches  ·  ' + stamp(T.start) + ' → ' + stamp(T.end), font({ size: 10, color: C.sand }));
     merge('B5:M5', 'Rules: max ' + o.limit + ' per ' + (o.groupBy === 'colour' ? 'colour' : 'item/SKU') + ' per customer  ·  invoices ≤ ' + o.gapMinutes +
       ' min apart form a run  ·  min ' + o.minInvoices + ' invoices per run' + (meta.scopeLabel ? '   |   View: ' + meta.scopeLabel : ''), font({ size: 10, color: C.sand2 }));
@@ -421,7 +421,7 @@
     var wb = new ExcelJS.Workbook();
     wb.creator = 'Half Million · Mugs SOP Monitor';
     wb.created = new Date();
-    wb.title = 'Mugs SOP report ' + fmtDate(R.totals.start);
+    wb.title = 'Mugs SOP report ' + (meta.periodLabel || fmtDate(R.totals.start));
 
     var images = { branches: chartBranches(R.stores), hours: chartHours(R) };
     var rv = meta.reviews || null, rvLabels = meta.reviewLabels || {};

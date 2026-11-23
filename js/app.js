@@ -143,7 +143,8 @@
     state.parsed = parsed; state.fileName = name; state.savedAt = meta.savedAt || null;
     state.cloudReport = meta.cloud || null; state.reviews = meta.reviews || {};
     var days = parsed.days || [];
-    state.day = days.length > 1 ? days[days.length - 1] : '';
+    state.day = ''; // a multi-day file or period opens on all its days together; the Day picker narrows it
+    state.range = meta.range || null;
     state.open = {};
     state.filter = { store: '', level: '', q: '' };
     $('fStore').value = ''; $('fLevel').value = ''; $('fSearch').value = '';
@@ -186,6 +187,24 @@
   var REVIEW_LABELS = { open: 'Open', genuine: 'Genuine (family/group)', violation: 'Violation', false_positive: 'False positive' };
   function runKey(r) { return 'run|' + r.store + '|' + r.label + '|' + r.start; }
   function directKey(d) { return 'direct|' + d.store + '|' + d.label + '|' + d.time; }
+  // "15 – 21 November 2026", "28 November – 4 December 2026", "30 December 2026 – 2 January 2027"
+  function periodTitle(fromIso, toIso) {
+    if (!fromIso || fromIso === toIso) return longDate(Date.parse((fromIso || toIso) + 'T00:00:00Z'));
+    var a = fromIso.split('-'), b = toIso.split('-');
+    var mon = function (iso) { return new Date(Date.parse(iso + 'T00:00:00Z')).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' }); };
+    if (a[0] !== b[0]) return longDate(Date.parse(fromIso + 'T00:00:00Z')) + ' – ' + longDate(Date.parse(toIso + 'T00:00:00Z'));
+    if (a[1] !== b[1]) return (+a[2]) + ' ' + mon(fromIso) + ' – ' + (+b[2]) + ' ' + mon(toIso) + ' ' + b[0];
+    return (+a[2]) + ' – ' + (+b[2]) + ' ' + mon(toIso) + ' ' + b[0];
+  }
+  function shortRange(fromIso, toIso) { return fromIso === toIso ? shortDay(fromIso) : shortDay(fromIso) + ' – ' + shortDay(toIso); }
+  // Days shown: the file's accounting days, or (older data without them) the sale dates, counting
+  // early-morning sales before 06:00 as the previous day.
+  function periodOf(T) {
+    var days = (state.parsed && state.parsed.days) || [];
+    if (days.length) return { from: days[0], to: days[days.length - 1] };
+    var from = new Date(T.start).toISOString().slice(0, 10), to = new Date(T.end - 6 * 3600000).toISOString().slice(0, 10);
+    return { from: from, to: to < from ? from : to };
+  }
   function shortDay(iso) {
     return new Date(Date.parse(iso + 'T00:00:00Z')).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   }
@@ -198,6 +217,39 @@
       return '<option value="' + d + '"' + (state.day === d ? ' selected' : '') + '>' + esc(shortDay(d)) + '</option>';
     }).join('') + '<option value=""' + (!state.day ? ' selected' : '') + '>All ' + days.length + ' days together</option>';
   }
+  // Cloud: choose a single day or a recent period, measured back from the latest day uploaded.
+  var PERIODS = [7, 14, 30];
+  function renderPeriodPicker() {
+    var sel = $('periodSelect'), wrap = $('periodPick');
+    var list = cloud.reports || [];
+    wrap.hidden = !(cloud.on && list.length > 1);
+    if (wrap.hidden) return;
+    var latest = list[0].reportDate, cur = state.range ? 'range:' + state.range.from + ':' + state.range.to : (state.cloudReport ? 'day:' + state.cloudReport.id : '');
+    var opts = [], seen = {};
+    PERIODS.forEach(function (n) {
+      var from = new Date(Date.parse(latest + 'T00:00:00Z') - (n - 1) * 86400000).toISOString().slice(0, 10);
+      var inRange = list.filter(function (r) { return r.reportDate >= from && r.reportDate <= latest; });
+      if (inRange.length < 2) return;
+      var first = inRange[inRange.length - 1].reportDate;
+      var v = 'range:' + first + ':' + latest;
+      if (seen[v]) return; seen[v] = 1;
+      opts.push('<option value="' + v + '">Last ' + n + ' days (' + esc(shortRange(first, latest)) + ')</option>');
+    });
+    if (state.range && !seen[cur]) opts.unshift('<option value="' + cur + '">' + esc(shortRange(state.range.from, state.range.to)) + '</option>');
+    opts.push('<option disabled>──────────</option>');
+    list.forEach(function (r) { opts.push('<option value="day:' + r.id + '">' + esc(shortDay(r.reportDate)) + '</option>'); });
+    sel.innerHTML = opts.join('');
+    sel.value = cur;
+  }
+  $('periodSelect').addEventListener('change', function () {
+    var v = this.value;
+    try { localStorage.setItem('mugsSopPeriod', v.indexOf('range:') === 0 ? 'days:' + v.split(':').length : 'day'); } catch (e) { /* ignore */ }
+    if (v.indexOf('day:') === 0) { cloud.open(v.slice(4)).then(renderPeriodPicker); return; }
+    var p = v.split(':'), from = p[1], to = p[2];
+    var reps = cloud.reports.filter(function (r) { return r.reportDate >= from && r.reportDate <= to; });
+    try { localStorage.setItem('mugsSopPeriod', 'last:' + (Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1)); } catch (e) { /* ignore */ }
+    cloud.openRange(reps);
+  });
   $('daySelect').addEventListener('change', function () {
     state.day = this.value; state.open = {}; state.filter.store = '';
     run(true);
@@ -261,7 +313,7 @@
         }).catch(function () { clearTimeout(timer); return false; });
     },
     refresh: function () {
-      return api('/api/reports').then(function (d) { cloud.reports = d.reports || []; renderHistory(); return cloud.reports; });
+      return api('/api/reports').then(function (d) { cloud.reports = d.reports || []; renderHistory(); renderPeriodPicker(); return cloud.reports; });
     },
     open: function (id) {
       toast('Opening report…', 'busy');
@@ -279,7 +331,7 @@
         (out[1].reviews || []).forEach(function (r) { reviews[r.flagKey] = r; });
         if (!cloud.admin && meta.rules) applyRules(meta.rules);
         useParsed({ lines: data.lines, warnings: [], reportDate: data.reportDate }, meta.fileName, { cloud: meta, reviews: reviews });
-        renderHistory();
+        renderHistory(); renderPeriodPicker();
         var spanH = meta.periodEnd && meta.periodStart ? (meta.periodEnd - meta.periodStart) / 3600000 : 0;
         if (spanH > 36 && !(data.lines[0] && data.lines[0].day) && cloud.admin) {
           toast('This day was saved by an older version and holds several days together. Upload the file again to split it into separate days.', 'error');
@@ -287,6 +339,43 @@
           toast('Opened ' + longDate(Date.parse(meta.reportDate + 'T00:00:00Z')) + ' from HM cloud');
         }
       }).catch(function (err) { console.error(err); toast('Could not open report: ' + err.message, 'error'); });
+    },
+    // Open several day reports together as one period (e.g. the last 7 days, or the days of one upload).
+    openRange: function (reports, label) {
+      reports = reports.slice().sort(function (a, b) { return a.reportDate < b.reportDate ? -1 : 1; });
+      if (!reports.length) return Promise.resolve();
+      if (reports.length === 1) return cloud.open(reports[0].id);
+      toast('Opening ' + reports.length + ' days…', 'busy');
+      var load = function (r) {
+        return Promise.all([
+          api('/api/reports/' + r.id + '/lines', { raw: true }).then(function (res) {
+            return new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).json();
+          }),
+          api('/api/reports/' + r.id + '/reviews')
+        ]).then(function (out) { return { r: r, lines: out[0].lines || [], reviews: out[1].reviews || [] }; });
+      };
+      // a few at a time
+      var results = [], i = 0;
+      var worker = function () {
+        if (i >= reports.length) return Promise.resolve();
+        var r = reports[i++];
+        return load(r).then(function (x) { results.push(x); return worker(); });
+      };
+      return Promise.all([worker(), worker(), worker(), worker()]).then(function () {
+        results.sort(function (a, b) { return a.r.reportDate < b.r.reportDate ? -1 : 1; });
+        var lines = [], reviews = {}, byDay = {};
+        results.forEach(function (x) {
+          x.lines.forEach(function (l) { if (!l.day) l.day = x.r.reportDate; lines.push(l); });
+          x.reviews.forEach(function (v) { reviews[v.flagKey] = v; });
+          byDay[x.r.reportDate] = x.r;
+        });
+        if (!cloud.admin && results[0].r.rules) applyRules(results[0].r.rules);
+        var days = results.map(function (x) { return x.r.reportDate; });
+        useParsed({ lines: lines, warnings: [], reportDate: null, days: days }, label || 'Saved days',
+          { reviews: reviews, allDays: true, range: { byDay: byDay, from: days[0], to: days[days.length - 1] } });
+        renderHistory(); renderPeriodPicker();
+        toast('Showing ' + shortRange(days[0], days[days.length - 1]) + ' · ' + plural(days.length, 'day', 'days'));
+      }).catch(function (err) { console.error(err); toast('Could not open the period: ' + err.message, 'error'); });
     },
     // Save one day as one report. Resolves { id, replaced }.
     saveDay: function (buf, file, parsed, dayIso, fileFrom) {
@@ -376,8 +465,9 @@
         renderTrends();
         return cloud.refresh().then(function () {
           // Show the latest day as its own cloud report (same view everyone else gets), then confirm the save.
-          var last = saved[saved.length - 1];
-          if (last) return cloud.open(last.id).then(function () { toast(msg + ' · showing ' + shortDay(last.day)); });
+          var ids = saved.map(function (x) { return x.id; });
+          var reps = cloud.reports.filter(function (r) { return ids.indexOf(r.id) >= 0; });
+          if (reps.length) return cloud.openRange(reps).then(function () { toast(msg + ' · showing all ' + reps.length + ' days'); });
         });
       }).catch(function (err) {
         console.error(err);
@@ -394,8 +484,14 @@
       }).catch(function (err) { toast('Could not delete: ' + err.message, 'error'); });
     },
     saveReview: function (key, kind, store, status, note) {
-      if (!state.cloudReport) { toast('Save the report to the cloud before reviewing', 'error'); return Promise.resolve(); }
-      return api('/api/reviews', { method: 'PUT', json: { flagKey: key, reportId: state.cloudReport.id, kind: kind, store: store, status: status, note: note } })
+      var reportId = state.cloudReport && state.cloudReport.id;
+      if (!reportId && state.range) {
+        var t = Number(key.split('|').pop()), day = state.lineDay && state.lineDay[store + '|' + t];
+        var rr = day && state.range.byDay[day];
+        reportId = rr && rr.id;
+      }
+      if (!reportId) { toast('Save the report to the cloud before reviewing', 'error'); return Promise.resolve(); }
+      return api('/api/reviews', { method: 'PUT', json: { flagKey: key, reportId: reportId, kind: kind, store: store, status: status, note: note } })
         .then(function (r) {
           state.reviews[key] = { flagKey: key, kind: kind, store: store, status: status, note: note, reviewedBy: r.reviewedBy, reviewedAt: r.reviewedAt };
           toast('Review saved: ' + REVIEW_LABELS[status]);
@@ -513,7 +609,13 @@
       mapReady.then(function () { if (state.parsed) run(false); });
       cloud.refresh().then(function (list) {
         renderTrends();
-        if (list.length && !state.parsed) cloud.open(list[0].id).then(bootDone, bootDone);
+        var pref = ''; try { pref = localStorage.getItem('mugsSopPeriod') || ''; } catch (e) { /* ignore */ }
+        var lastN = /^last:(\d+)$/.exec(pref);
+        if (list.length > 1 && !state.parsed && lastN) {
+          var from = new Date(Date.parse(list[0].reportDate + 'T00:00:00Z') - (+lastN[1] - 1) * 86400000).toISOString().slice(0, 10);
+          var reps = list.filter(function (r) { return r.reportDate >= from; });
+          cloud.openRange(reps).then(bootDone, bootDone);
+        } else if (list.length && !state.parsed) cloud.open(list[0].id).then(bootDone, bootDone);
         else {
           if (!list.length && !cloud.admin) { $('empty').hidden = true; $('viewerEmpty').hidden = false; }
           bootDone();
@@ -923,6 +1025,10 @@
 
   /* ---------- analysis ---------- */
   function run(isNewFile) {
+    if (state.range) {
+      state.lineDay = {};
+      state.parsed.lines.forEach(function (l) { state.lineDay[l.store + '|' + l.time] = l.day; });
+    }
     var allLines = state.day ? state.parsed.lines.filter(function (l) { return l.day === state.day; }) : state.parsed.lines;
     var lines = allLines;
     if (scopeActive()) {
@@ -952,12 +1058,17 @@
     $('results').hidden = false;
     $('btnExport').disabled = false;
 
-    $('reportTitle').textContent = state.day ? longDate(Date.parse(state.day + 'T00:00:00Z')) : longDate(T.start);
+    var per = periodOf(T);
+    state.periodLabel = state.day ? longDate(Date.parse(state.day + 'T00:00:00Z')) : periodTitle(per.from, per.to);
+    $('reportTitle').textContent = state.periodLabel;
+    var eb = document.querySelector('.hero-report .admin-hide-viewer');
+    if (eb) eb.textContent = !state.day && per.from !== per.to ? 'Compliance report · ' + (Math.round((Date.parse(per.to) - Date.parse(per.from)) / 86400000) + 1) + ' days' : 'Daily compliance report';
     renderDayPicker();
     $('fileInfo').textContent = state.fileName + ' · ' + plural(T.stores, 'branch', 'branches') + ' · ' +
       dt(T.start) + ' → ' + dt(T.end) +
       (state.parsed.warnings.length ? ' · ' + plural(state.parsed.warnings.length, 'row', 'rows') + ' skipped' : '') +
-      (state.cloudReport ? ' · Saved to HM cloud by ' + state.cloudReport.uploadedBy + ', ' +
+      (state.range ? ' · ' + plural(Object.keys(state.range.byDay).length, 'day', 'days') + ' from HM cloud' :
+       state.cloudReport ? ' · Saved to HM cloud by ' + state.cloudReport.uploadedBy + ', ' +
         new Date(state.cloudReport.uploadedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) :
        state.savedAt ? ' · Saved in this browser ' + new Date(state.savedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
     $('btnOriginal').hidden = !state.cloudReport;
@@ -1342,12 +1453,14 @@
     var label = btnExport.querySelector('span'), prev = label.textContent;
     btnExport.classList.add('busy'); btnExport.setAttribute('aria-busy', 'true'); label.textContent = 'Preparing…';
     loadExcelJs().then(function () {
-      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.day || state.parsed.reportDate,
+      return window.MugsReport.build(state.result, { fileName: state.fileName, reportDate: state.day || state.parsed.reportDate, periodLabel: state.periodLabel,
         reviews: cloud.on ? state.reviews : null, reviewLabels: REVIEW_LABELS, runKey: runKey, directKey: directKey,
         branchInfo: state.mapping ? branchInfo : null, scopeLabel: scopeLabel() });
     }).then(function (blob) {
       var d = new Date(state.result.totals.start);
       var day = d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+      var per = periodOf(state.result.totals);
+      if (state.day) day = state.day; else if (per.from !== per.to) day = per.from + ' to ' + per.to;
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'HM Mugs SOP report ' + day + '.xlsx';
