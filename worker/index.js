@@ -12,7 +12,7 @@
  *   viewer – an area manager; read-only, and the server only returns their own branches
  */
 
-const MAX_FILE_BYTES = 25 * 1024 * 1024;   // original Excel upload
+const MAX_FILE_BYTES = 90 * 1024 * 1024;   // original Excel upload (a month or more of data)
 const MAX_LINES_BYTES = 20 * 1024 * 1024;  // gzipped JSON of sale lines
 const REVIEW_STATUSES = ['open', 'genuine', 'violation', 'false_positive'];
 const RISK = ['High', 'Medium', 'Low', 'Clean'];
@@ -270,8 +270,13 @@ const amKey = async (reportId, am) => `lines/${reportId}/am/${(await sha256Hex(a
 async function deleteReports(env, rows) {
   if (!rows.length) return 0;
   const keys = [];
+  const ids = rows.map((r) => r.id);
   for (const r of rows) {
-    keys.push(r.file_key, r.lines_key);
+    // An original file shared by several days is removed only when no other day uses it.
+    const others = await env.DB.prepare(`SELECT COUNT(*) AS n FROM reports WHERE file_key = ? AND id NOT IN (${ids.map(() => '?').join(',')})`)
+      .bind(r.file_key, ...ids).first();
+    if (!others || others.n === 0) keys.push(r.file_key);
+    keys.push(r.lines_key);
     let cursor;
     do {
       const page = await env.FILES.list({ prefix: `lines/${r.id}/`, cursor });
@@ -298,10 +303,16 @@ async function createReport(request, env, user) {
   if (!isDate(b.reportDate)) throw bad('reportDate must be YYYY-MM-DD');
   if (!b.fileName) throw bad('fileName is required');
   if (!Array.isArray(b.stores) || b.stores.length > 2000) throw bad('stores must be an array (max 2000)');
-  if (num(b.fileSize) > MAX_FILE_BYTES) throw new HttpError(413, 'File is larger than 25 MB');
+  if (num(b.fileSize) > MAX_FILE_BYTES) throw new HttpError(413, 'File is larger than 90 MB');
 
   const id = crypto.randomUUID();
-  const fileKey = `files/${b.reportDate}/${id}/${safeName(b.fileName)}`;
+  // Several days from one upload share the original file (uploaded once with the first day).
+  let fileKey = `files/${b.reportDate}/${id}/${safeName(b.fileName)}`;
+  if (b.fileFrom) {
+    const src = await env.DB.prepare('SELECT file_key FROM reports WHERE id = ?').bind(str(b.fileFrom, 64)).first();
+    if (!src || !src.file_key) throw bad('fileFrom report not found');
+    fileKey = src.file_key;
+  }
   const linesKey = `lines/${id}.json.gz`;
   const stmts = [
     env.DB.prepare(`INSERT INTO reports (id, report_date, period_start, period_end, file_name, file_size, file_key, lines_key,
