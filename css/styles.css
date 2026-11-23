@@ -864,3 +864,11 @@ html.booting .hero { min-height: 100vh; min-height: 100dvh; }
   .bm-fill { animation: none; transform: translateY(30%); }
   .bm-steam { opacity: 0.5; }
 }
+
+/* ---------- day picker for multi-day uploads ---------- */
+.day-pick { display: inline-flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--hm-sand-2); }
+.day-pick[hidden] { display: none; }
+.day-pick select { height: 38px; border-radius: 999px; border: 0; padding: 0 14px; font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  background: rgba(233, 220, 192, 0.12); color: #f6eedc; box-shadow: 0 0 0 1px rgba(233, 220, 192, 0.25) inset; cursor: pointer; }
+.day-pick select option { color: #15211b; }
+.day-pick select:focus { outline: none; box-shadow: 0 0 0 1px var(--hm-sand) inset, 0 0 0 3px rgba(233, 220, 192, 0.25); }

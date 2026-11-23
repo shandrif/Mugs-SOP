@@ -62,6 +62,18 @@
     return null;
   }
 
+  // Accounting day -> "YYYY-MM-DD" (Excel serial, Date, "2026-11-18 00:00:00", "11/18/2026" or "18.11.2026").
+  function toDay(v) {
+    if (v === null || v === undefined || v === '') return '';
+    if (typeof v === 'number' && isFinite(v)) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+    if (v instanceof Date) return new Date(v.getTime() - v.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    var t = String(v).trim(), m;
+    if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+    if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/))) { var y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; return y + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2); }
+    if ((m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/))) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    return '';
+  }
+
   function fmtTime(ms, withDate) {
     var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; };
     var t = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
@@ -120,6 +132,7 @@
         itemEn: englishPart(cur.item),
         colour: colourOf(cur.item),
         time: closeMs,
+        day: toDay(cur.day),
         sales: Number(x[col.sales]) || 0,
         qty: qty,
         invoice: col.invoice !== undefined ? clean(x[col.invoice]) : '',
@@ -133,7 +146,11 @@
       var m = t.match(/date:\s*([0-9\/\-]+)/i);
       if (m) reportDate = m[1];
     }
-    return { lines: lines, warnings: warnings, reportDate: reportDate, hasInvoiceCol: col.invoice !== undefined };
+    // Accounting days in the file (a weekly export holds several).
+    var dayset = {};
+    lines.forEach(function (l) { if (l.day) dayset[l.day] = 1; });
+    var days = Object.keys(dayset).sort();
+    return { lines: lines, warnings: warnings, reportDate: reportDate, days: days, hasInvoiceCol: col.invoice !== undefined };
   }
 
   /* ---------- 2. Analyse ---------- */
@@ -293,5 +310,5 @@
     return { options: o, totals: totals, stores: storeList, direct: direct, runs: runs };
   }
 
-  return { DEFAULTS: DEFAULTS, parseRows: parseRows, analyse: analyse, colourOf: colourOf, toMs: toMs, fmtTime: fmtTime };
+  return { DEFAULTS: DEFAULTS, toDay: toDay, parseRows: parseRows, analyse: analyse, colourOf: colourOf, toMs: toMs, fmtTime: fmtTime };
 });
