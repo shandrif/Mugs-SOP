@@ -26,6 +26,8 @@
   })();
   function bootDone() {
     if (bootTimer) { clearInterval(bootTimer); bootTimer = null; }
+    var bv = document.getElementById('bootVideo');
+    if (bv) { try { bv.pause(); bv.removeAttribute('src'); bv.load(); } catch (e) { /* ignore */ } }
     document.documentElement.classList.remove('booting');
   }
   function esc(s) {
