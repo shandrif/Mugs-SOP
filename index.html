@@ -46,6 +46,20 @@
 
   <section class="hero" id="top">
     <div class="hero-bg" aria-hidden="true"><i class="aurora"></i></div>
+    <video class="boot-video" id="bootVideo" muted loop playsinline preload="auto" poster="media/loading-poster.jpg" aria-hidden="true"></video>
+    <div class="boot-shade" aria-hidden="true"></div>
+    <script>
+      // Loading screen video: smaller file on phones / data saver; still image only when motion is reduced.
+      (function () {
+        var v = document.getElementById('bootVideo');
+        if (!document.documentElement.classList.contains('booting')) return;
+        var small = window.innerWidth < 760 || (navigator.connection && navigator.connection.saveData);
+        v.src = small ? 'media/loading-small.mp4' : 'media/loading.mp4';
+        if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+          var p = v.play(); if (p && p.catch) p.catch(function () {});
+        }
+      })();
+    </script>
     <div class="wrap hero-inner">
       <div class="hero-copy">
         <div class="hero-intro">
@@ -62,31 +76,6 @@
       </div>
 
       <div class="boot-loader" role="status" aria-live="polite">
-        <svg class="boot-mugs" viewBox="0 -38 230 132" aria-hidden="true">
-          <defs>
-            <clipPath id="bootClip1"><path d="M14 30h44v34a16 16 0 0 1-16 16H30a16 16 0 0 1-16-16z"/></clipPath>
-            <clipPath id="bootClip2"><path d="M88 16h52v46a18 18 0 0 1-18 18h-16a18 18 0 0 1-18-18z"/></clipPath>
-            <clipPath id="bootClip3"><path d="M170 30h44v34a16 16 0 0 1-16 16h-12a16 16 0 0 1-16-16z"/></clipPath>
-          </defs>
-          <g class="bm bm1">
-            <path class="bm-body" d="M14 30h44v34a16 16 0 0 1-16 16H30a16 16 0 0 1-16-16z"/>
-            <g clip-path="url(#bootClip1)"><path class="bm-fill" d="M6 30q8-5 16 0t16 0 16 0 16 0 16 0 16 0V90H6z"/></g>
-            <path class="bm-handle" d="M58 38h6a10 10 0 0 1 0 20h-6"/>
-            <path class="bm-steam" d="M36 20c-6-8 6-12 0-20s4-12 0-18"/>
-          </g>
-          <g class="bm bm2">
-            <path class="bm-body" d="M88 16h52v46a18 18 0 0 1-18 18h-16a18 18 0 0 1-18-18z"/>
-            <g clip-path="url(#bootClip2)"><path class="bm-fill" d="M80 16q9-5 18 0t18 0 18 0 18 0 18 0 18 0V90H80z"/></g>
-            <path class="bm-handle" d="M140 26h7a12 12 0 0 1 0 24h-7"/>
-            <path class="bm-steam" d="M114 6c-6-8 6-12 0-20s4-12 0-18"/>
-          </g>
-          <g class="bm bm3">
-            <path class="bm-body" d="M170 30h44v34a16 16 0 0 1-16 16h-12a16 16 0 0 1-16-16z"/>
-            <g clip-path="url(#bootClip3)"><path class="bm-fill" d="M162 30q8-5 16 0t16 0 16 0 16 0 16 0 16 0V90H162z"/></g>
-            <path class="bm-handle" d="M214 38h6a10 10 0 0 1 0 20h-6"/>
-            <path class="bm-steam" d="M192 20c-6-8 6-12 0-20s4-12 0-18"/>
-          </g>
-        </svg>
         <div class="boot-text">
           <strong id="bootMsg">Brewing your report…</strong>
           <span class="boot-sub">Half Million · Mugs SOP Monitor</span>

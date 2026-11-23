@@ -815,7 +815,8 @@ html.booting .boot-loader {
   grid-column: 1 / -1; min-height: calc(100vh - 230px); min-height: calc(100dvh - 230px); text-align: center; color: var(--hm-sand);
   animation: fade 400ms var(--ease-out) both;
 }
-html.booting .hero-intro, html.booting .hero-report, html.booting #drop, html.booting main, html.booting .footer { visibility: hidden; }
+html.booting .hero-copy, html.booting #drop { display: none !important; }
+html.booting main, html.booting .footer { visibility: hidden; }
 html.booting .hero-inner { grid-template-columns: 1fr; }
 html.booting .hero { min-height: 100vh; min-height: 100dvh; }
 
@@ -872,3 +873,16 @@ html.booting .hero { min-height: 100vh; min-height: 100dvh; }
   background: rgba(233, 220, 192, 0.12); color: #f6eedc; box-shadow: 0 0 0 1px rgba(233, 220, 192, 0.25) inset; cursor: pointer; }
 .day-pick select option { color: #15211b; }
 .day-pick select:focus { outline: none; box-shadow: 0 0 0 1px var(--hm-sand) inset, 0 0 0 3px rgba(233, 220, 192, 0.25); }
+
+/* ---------- loading screen: brand video behind the status ---------- */
+.boot-video, .boot-shade { display: none; }
+html.booting .boot-video { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; animation: fade 600ms var(--ease-out) both; }
+html.booting .boot-shade {
+  display: block; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(11, 61, 44, 0.55) 0%, rgba(11, 61, 44, 0.08) 22%, rgba(11, 61, 44, 0.05) 50%, rgba(11, 61, 44, 0.7) 78%, rgba(8, 40, 29, 0.92) 100%);
+}
+html.booting .boot-loader { justify-content: flex-end; padding-bottom: 4vh; min-height: calc(100vh - 200px); min-height: calc(100dvh - 200px); }
+html.booting .boot-text strong { text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45); }
+html.booting .boot-sub { color: rgba(246, 238, 220, 0.8); }
+html.booting .hero-bg .aurora { display: none; }
+@media (max-width: 760px) { html.booting .boot-video { object-position: 68% center; } }
