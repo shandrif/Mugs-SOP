@@ -896,3 +896,26 @@ html.booting .hero-bg .aurora { display: none; }
 .ex-form { display: grid; gap: 6px; }
 .ex-form input { height: 34px; border-radius: 8px; border: 0; padding: 0 10px; font-size: 13px; background: var(--surface-2); color: var(--ink); box-shadow: 0 0 0 1px var(--line) inset; min-width: 0; }
 .ex-form input:focus { outline: none; box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 3px var(--focus); }
+
+/* ---------- collapsible detection rules + branch mapping ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.settings .settings-head { flex-direction: row !important; flex-wrap: nowrap; justify-content: space-between; align-items: flex-start !important; gap: 10px; }
+.settings .settings-head > div { min-width: 0; flex: 1; }
+.collapse-btn { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--ink, inherit); cursor: pointer; transition: background .2s ease, transform .15s ease; }
+.collapse-btn:hover { background: var(--line); }
+.collapse-btn:active { transform: scale(.94); }
+.chev { width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(2px) rotate(-135deg); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.settings.collapsed .collapse-btn .chev { transform: translateY(-2px) rotate(45deg); }
+.settings.collapsed .settings-body { display: none; }
+.settings.collapsed .settings-head { margin-bottom: 0; }
+.settings-body { animation: rulesIn .25s ease; }
+@keyframes rulesIn { from { opacity: 0; transform: translateY(-4px); } }
+details.map-box > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+details.map-box > summary::-webkit-details-marker { display: none; }
+details.map-box > summary .chev { transform: translateY(-2px) rotate(45deg); }
+details.map-box[open] > summary .chev { transform: translateY(2px) rotate(-135deg); }
+@media (prefers-reduced-motion: reduce) { .chev, .settings-body { transition: none; animation: none; } }
+.dash-grid #mapMissing, .dash-grid #exList { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+@media (min-width: 1101px) {
+  .dash-grid .settings { max-height: calc(100vh - 110px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+}
