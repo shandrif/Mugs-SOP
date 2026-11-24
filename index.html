@@ -145,9 +145,13 @@
       </section>
       <aside class="panel settings reveal" style="--d:80ms" aria-label="Detection settings">
         <div class="settings-head">
-          <h2 class="section-title">Detection rules</h2>
-          <p class="muted small">Adjust and the report recalculates instantly.</p>
+          <div>
+            <h2 class="section-title">Detection rules</h2>
+            <p class="muted small">Adjust and the report recalculates instantly.</p>
+          </div>
+          <button type="button" class="collapse-btn" id="rulesToggle" aria-expanded="true" aria-controls="rulesBody" title="Collapse"><span class="chev" aria-hidden="true"></span><span class="sr-only">Collapse detection rules</span></button>
         </div>
+        <div class="settings-body" id="rulesBody">
         <div class="settings-grid">
           <label class="field"><span>Limit per customer</span>
             <input id="optLimit" type="number" min="1" max="20" value="2" inputmode="numeric">
@@ -166,8 +170,8 @@
           </label>
         </div>
         <p class="rules-note">Rules are saved in this browser and apply to every file you load.</p>
-        <div class="map-box">
-          <h3 class="section-title">Branch mapping</h3>
+        <details class="map-box" id="mapBox">
+          <summary><h3 class="section-title">Branch mapping</h3><span class="chev" aria-hidden="true"></span></summary>
           <p class="small" id="mapStatus"></p>
           <input id="mapFile" type="file" accept=".xlsx,.xls,.csv" hidden>
           <div class="map-actions">
@@ -185,6 +189,7 @@
               <button type="button" class="btn btn-primary btn-sm" id="exSave">Save exception</button>
             </div>
           </div>
+        </details>
         </div>
       </aside>
       </div>

@@ -768,6 +768,24 @@
     setMapping(state.mapping, true);
   });
 
+  // Collapsible Detection rules panel and Branch mapping box (remembered per browser).
+  (function () {
+    var panel = document.querySelector('.settings'), btn = $('rulesToggle'), box = $('mapBox');
+    function setRules(collapsed) {
+      panel.classList.toggle('collapsed', collapsed);
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      btn.title = collapsed ? 'Expand' : 'Collapse';
+    }
+    var pref = {}; try { pref = JSON.parse(localStorage.getItem('mugsSopPanels') || '{}') || {}; } catch (e) { /* ignore */ }
+    setRules(!!pref.rulesCollapsed);
+    box.open = !!pref.mapOpen;
+    function save() {
+      try { localStorage.setItem('mugsSopPanels', JSON.stringify({ rulesCollapsed: panel.classList.contains('collapsed'), mapOpen: box.open })); } catch (e) { /* ignore */ }
+    }
+    btn.addEventListener('click', function () { setRules(!panel.classList.contains('collapsed')); save(); });
+    box.addEventListener('toggle', save);
+  })();
+
   $('mapMissing').addEventListener('click', function (e) {
     var save = e.target.closest('button[data-map]'), un = e.target.closest('button[data-unmap]');
     if (!state.mapping) return;
