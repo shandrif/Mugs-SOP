@@ -445,13 +445,22 @@ async function getMapping(env, user) {
   }
   // Area managers only get their own branches.
   const m = await obj.json();
-  const pick = (src) => Object.fromEntries(Object.entries(src || {}).filter(([, b]) => b && b.am && b.am.toUpperCase() === String(user.area_manager || '').toUpperCase()));
+  const me = String(user.area_manager || '').toUpperCase();
+  const ov = m.overrides || {};
+  // Apply exceptions first, then keep only this area manager's branches.
+  const eff = (src) => Object.fromEntries(Object.entries(src || {}).map(([code, b]) => [code, ov[code] ? { ...b, am: ov[code].am, overridden: true } : b]));
+  const pick = (src) => Object.fromEntries(Object.entries(eff(src)).filter(([, b]) => b && b.am && b.am.toUpperCase() === me));
   return json({ branches: pick(m.branches), manual: pick(m.manual), count: 0, fileName: m.fileName, savedAt: m.savedAt });
 }
 
 async function saveMapping(env, b, savedBy) {
   if (!b || typeof b.branches !== 'object' || !Object.keys(b.branches).length) throw bad('branches is required');
-  const rec = { branches: b.branches, manual: (b.manual && typeof b.manual === 'object') ? b.manual : {}, count: num(b.count),
+  const overrides = {};
+  Object.entries((b.overrides && typeof b.overrides === 'object') ? b.overrides : {}).forEach(([code, v]) => {
+    if (/^B\d+$/.test(code) && v && typeof v.am === 'string' && v.am.trim())
+      overrides[code] = { am: str(v.am, 120).trim(), note: str(v.note, 200), by: str(v.by, 120), at: num(v.at) || Date.now() };
+  });
+  const rec = { branches: b.branches, manual: (b.manual && typeof b.manual === 'object') ? b.manual : {}, overrides, count: num(b.count),
     mainCount: num(b.mainCount), extraCount: num(b.extraCount), fileName: str(b.fileName, 200), savedAt: Date.now(), savedBy };
   await env.FILES.put(MAPPING_KEY, JSON.stringify(rec), { httpMetadata: { contentType: 'application/json' } });
   log('info', 'mapping.saved', { count: rec.count, by: savedBy });
@@ -470,8 +479,9 @@ async function syncMapping(request, env) {
   const prev = prevObj ? await prevObj.json() : null;
   const manual = {};
   Object.entries((prev && prev.manual) || {}).forEach(([code, v]) => { if (!b.branches[code]) manual[code] = v; });
-  const rec = await saveMapping(env, { ...b, manual }, 'Weekly SharePoint sync');
-  return json({ ok: true, count: rec.count, keptManual: Object.keys(manual).length, savedAt: rec.savedAt });
+  // Area manager exceptions set by an admin always stay.
+  const rec = await saveMapping(env, { ...b, manual, overrides: (prev && prev.overrides) || {} }, 'Weekly SharePoint sync');
+  return json({ ok: true, count: rec.count, keptManual: Object.keys(manual).length, keptExceptions: Object.keys(rec.overrides).length, savedAt: rec.savedAt });
 }
 
 /* ------------------------------------------------------------------ router */

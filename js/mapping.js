@@ -90,7 +90,15 @@
   function lookup(mapping, storeName) {
     if (!mapping || !mapping.branches) return null;
     var code = codeOf(storeName);
-    return mapping.branches[code] || (mapping.manual && mapping.manual[code]) || null;
+    var base = mapping.branches[code] || (mapping.manual && mapping.manual[code]) || null;
+    // Admin exceptions (e.g. a branch moved to a new area manager) win over the file and survive syncs.
+    var ov = mapping.overrides && mapping.overrides[code];
+    if (!ov) return base;
+    var out = {}; var k;
+    for (k in (base || {})) out[k] = base[k];
+    for (k in ov) if (ov[k]) out[k] = ov[k];
+    out.code = code; out.overridden = true;
+    return out;
   }
 
   var ABBR = { MKK: 'Makkah', MEC: 'Makkah', JED: 'Jeddah', RIY: 'Riyadh', MED: 'Madinah', DMM: 'Dammam', KBR: 'Khobar' };

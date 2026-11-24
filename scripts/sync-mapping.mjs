@@ -58,4 +58,4 @@ const res = await fetch(base + '/api/mapping/sync', {
 const out = await res.text();
 if (!res.ok) { console.error(`Sync failed: HTTP ${res.status} ${out}`); process.exit(1); }
 const r = JSON.parse(out);
-console.log(`Synced to ${base}: ${r.count} branches saved, ${r.keptManual} hand-added branches kept.`);
+console.log(`Synced to ${base}: ${r.count} branches saved, ${r.keptManual} hand-added branches kept, ${r.keptExceptions || 0} area manager exceptions kept.`);

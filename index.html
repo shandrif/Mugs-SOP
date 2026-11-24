@@ -175,6 +175,16 @@
             <button type="button" class="btn btn-ghost btn-sm danger" id="btnMapClear" hidden>Remove</button>
           </div>
           <div id="mapMissing" class="map-missing"></div>
+          <div id="mapExceptions" class="map-exceptions" hidden>
+            <p class="small strong-label">Area manager exceptions</p>
+            <p class="muted small">Move branches to a different area manager. Exceptions win over the mapping file and stay through the weekly sync.</p>
+            <div id="exList"></div>
+            <div class="ex-form">
+              <input id="exCodes" placeholder="Branch codes, e.g. B85, B87" aria-label="Branch codes">
+              <input id="exAm" list="exAmList" placeholder="Area manager name" aria-label="Area manager name"><datalist id="exAmList"></datalist>
+              <button type="button" class="btn btn-primary btn-sm" id="exSave">Save exception</button>
+            </div>
+          </div>
         </div>
       </aside>
       </div>
