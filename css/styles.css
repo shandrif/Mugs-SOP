@@ -889,3 +889,10 @@ html.booting .hero-bg .aurora { display: none; }
 
 .pickers { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .pickers:empty, .pickers:not(:has(.day-pick:not([hidden]))) { display: none; }
+
+.map-exceptions { display: grid; gap: 8px; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.map-exceptions[hidden] { display: none; }
+.map-exceptions .strong-label { font-weight: 700; }
+.ex-form { display: grid; gap: 6px; }
+.ex-form input { height: 34px; border-radius: 8px; border: 0; padding: 0 10px; font-size: 13px; background: var(--surface-2); color: var(--ink); box-shadow: 0 0 0 1px var(--line) inset; min-width: 0; }
+.ex-form input:focus { outline: none; box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 3px var(--focus); }

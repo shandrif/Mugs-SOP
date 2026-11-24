@@ -695,6 +695,7 @@
     $('btnMapClear').hidden = !m;
     $('btnMap').textContent = m ? 'Replace mapping' : 'Upload mapping';
     renderMissing();
+    renderExceptions();
   }
   // Branches in the sales file that the mapping file does not cover: pick the area manager here.
   function renderMissing() {
@@ -729,6 +730,44 @@
     if (!todo.length) html = '<datalist id="amList">' + Object.keys(ams).sort().map(function (a) { return '<option value="' + esc(a) + '">'; }).join('') + '</datalist>' + html;
     box.innerHTML = html;
   }
+  // Area manager exceptions: an admin moves branches to another area manager; kept through syncs.
+  function renderExceptions() {
+    var box = $('mapExceptions'), m = state.mapping;
+    box.hidden = !m || (cloud.on && !cloud.admin);
+    if (box.hidden) return;
+    var ov = m.overrides || {}, codes = Object.keys(ov).sort(function (a, b) { return parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10); });
+    var base = function (c) { return m.branches[c] || (m.manual && m.manual[c]) || null; };
+    $('exList').innerHTML = codes.length ? codes.map(function (c) {
+      var b = base(c);
+      var nm = b && b.name && !/^n\/?a$/i.test(b.name) ? b.name : '';
+      return '<div class="miss-row done"><span><b>' + esc(c) + (nm ? ' · ' + esc(nm) : '') + '</b><br><span class="muted small">→ ' + esc(ov[c].am) +
+        (b && b.am && b.am !== ov[c].am ? ' (file says ' + esc(b.am) + ')' : '') + '</span></span>' +
+        '<button type="button" class="btn btn-ghost btn-sm danger" data-unex="' + esc(c) + '">Remove</button></div>';
+    }).join('') : '<p class="muted small">No exceptions.</p>';
+    var ams = {};
+    [m.branches, m.manual].forEach(function (src) { Object.keys(src || {}).forEach(function (k) { if (src[k].am) ams[src[k].am] = 1; }); });
+    codes.forEach(function (c) { ams[ov[c].am] = 1; });
+    $('exAmList').innerHTML = Object.keys(ams).sort().map(function (a) { return '<option value="' + esc(a) + '">'; }).join('');
+  }
+  $('exSave').addEventListener('click', function () {
+    var m = state.mapping; if (!m) return;
+    var am = $('exAm').value.trim().toUpperCase();
+    var codes = $('exCodes').value.split(/[\s,;]+/).map(function (c) { return MAP.codeOf(c); }).filter(Boolean);
+    if (!codes.length || !am) { toast('Enter branch codes (e.g. B85, B87) and the area manager name', 'error'); return; }
+    var unknown = codes.filter(function (c) { return !m.branches[c] && !(m.manual && m.manual[c]); });
+    if (unknown.length) { toast('Not in the mapping: ' + unknown.join(', '), 'error'); return; }
+    m.overrides = m.overrides || {};
+    codes.forEach(function (c) { m.overrides[c] = { am: am, by: (cloud.me && (cloud.me.name || cloud.me.email)) || '', at: Date.now() }; });
+    $('exCodes').value = ''; $('exAm').value = '';
+    setMapping(m, true);
+    toast(codes.join(', ') + ' → ' + am + '. Re-upload recent days to re-file them.');
+  });
+  $('exList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-unex]'); if (!b || !state.mapping) return;
+    delete state.mapping.overrides[b.getAttribute('data-unex')];
+    setMapping(state.mapping, true);
+  });
+
   $('mapMissing').addEventListener('click', function (e) {
     var save = e.target.closest('button[data-map]'), un = e.target.closest('button[data-unmap]');
     if (!state.mapping) return;
@@ -768,6 +807,7 @@
         var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         var m = MAP.parseWorkbook(XLSX, wb);
         m.fileName = f.name; m.savedAt = Date.now();
+        if (state.mapping && state.mapping.overrides) m.overrides = state.mapping.overrides;
         if (state.mapping && state.mapping.manual) {
           m.manual = {};
           Object.keys(state.mapping.manual).forEach(function (k) { if (!m.branches[k]) m.manual[k] = state.mapping.manual[k]; });
